@@ -2,8 +2,8 @@
 // @author         Mike Diehn
 // @name           Range Rings
 // @category       Layer
-// @version        1.0.1
-// @description    Draw concentric range circles from a draggable center point.
+// @version        1.1.0
+// @description    Draw concentric range circles from draggable center points.
 // @id             range-rings@mdiehn
 // @namespace      https://github.com/mdiehn/iitc-plugin-range-rings
 // @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/range-rings.user.js
@@ -110,6 +110,10 @@ function wrapper(plugin_info) {
     return 'set-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
   };
 
+  rr.util.getSetDisplayName = function (set, index) {
+    return 'Set ' + (index + 1);
+  };
+
   // --------------------------------------------------------------------------
   // model
   // --------------------------------------------------------------------------
@@ -177,16 +181,24 @@ function wrapper(plugin_info) {
     return set;
   };
 
-  rr.model.getActiveSet = function () {
-    if (!rr.state.activeSetId) return null;
-
+  rr.model.getSetIndexById = function (setId) {
     for (let i = 0; i < rr.state.ringSets.length; i += 1) {
-      if (rr.state.ringSets[i].id === rr.state.activeSetId) {
-        return rr.state.ringSets[i];
+      if (rr.state.ringSets[i].id === setId) {
+        return i;
       }
     }
+    return -1;
+  };
 
-    return null;
+  rr.model.getSetById = function (setId) {
+    const index = rr.model.getSetIndexById(setId);
+    if (index === -1) return null;
+    return rr.state.ringSets[index];
+  };
+
+  rr.model.getActiveSet = function () {
+    if (!rr.state.activeSetId) return null;
+    return rr.model.getSetById(rr.state.activeSetId);
   };
 
   rr.model.ensureActiveSet = function () {
@@ -230,6 +242,60 @@ function wrapper(plugin_info) {
       lat: latlng.lat,
       lng: latlng.lng
     };
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.model.setActiveSet = function (setId) {
+    if (!rr.model.getSetById(setId)) return;
+    rr.state.activeSetId = setId;
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.model.addSet = function () {
+    const baseSet = rr.model.getActiveSet() || rr.model.ensureActiveSet();
+    const baseCenterLatLng = rr.model.getSetCenterLatLng(baseSet);
+
+    const offsetMeters = Math.max(500, Math.min(baseSet.spacingMeters, 5000));
+    const latOffset = offsetMeters / 111320;
+    const lngOffset = offsetMeters / (111320 * Math.cos(baseCenterLatLng.lat * Math.PI / 180));
+
+    const newSet = rr.model.createRingSet({
+      center: {
+        lat: baseCenterLatLng.lat - latOffset,
+        lng: baseCenterLatLng.lng + lngOffset
+      },
+      spacingMeters: baseSet.spacingMeters,
+      circleCount: baseSet.circleCount,
+      color: baseSet.color,
+      lineWeight: baseSet.lineWeight,
+      lineStyle: baseSet.lineStyle
+    });
+
+    rr.state.ringSets.push(newSet);
+    rr.state.activeSetId = newSet.id;
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.model.deleteActiveSet = function () {
+    if (rr.state.ringSets.length <= 1) return;
+
+    const activeIndex = rr.model.getSetIndexById(rr.state.activeSetId);
+    if (activeIndex === -1) return;
+
+    const activeSet = rr.state.ringSets[activeIndex];
+    rr.render.clearSet(activeSet);
+
+    rr.state.ringSets.splice(activeIndex, 1);
+
+    const nextIndex = Math.max(0, activeIndex - 1);
+    rr.state.activeSetId = rr.state.ringSets[nextIndex].id;
+
     rr.storage.save();
     rr.render.redrawAll();
     rr.ui.syncPanel();
@@ -281,10 +347,9 @@ function wrapper(plugin_info) {
         return;
       }
 
-      // Backward-compatible load of older single-set format
       const oldStyleSet = rr.model.createRingSet({
         center: parsed.center,
-        spacingMeters: parsed.radiusMeters,
+        spacingMeters: parsed.spacingMeters || parsed.radiusMeters,
         circleCount: parsed.circleCount,
         color: parsed.color,
         lineWeight: parsed.lineWeight,
@@ -347,24 +412,39 @@ function wrapper(plugin_info) {
   };
 
   rr.render.createMarker = function (set, center) {
-    set.marker = L.marker(center, {
-      draggable: true,
-      autoPan: true,
-      keyboard: false,
-      title: 'Range Rings center',
-      icon: rr.state.defaultMarkerIcon
-    });
+  set.marker = L.marker(center, {
+    draggable: true,
+    autoPan: true,
+    keyboard: false,
+    title: 'Range Rings center',
+    icon: rr.state.defaultMarkerIcon
+  });
 
-    set.marker.on('drag', function (event) {
-      rr.render.updateCirclePositions(set, event.target.getLatLng());
-    });
+  set.marker.on('click', function () {
+    rr.model.setActiveSet(set.id);
+  });
 
-    set.marker.on('dragend', function (event) {
-      rr.model.setCenter(set, event.target.getLatLng());
-    });
+  set.marker.on('drag', function (event) {
+    rr.render.updateCirclePositions(set, event.target.getLatLng());
+  });
 
-    rr.state.layerGroup.addLayer(set.marker);
-  };
+  set.marker.on('dragstart', function () {
+    if (rr.state.activeSetId !== set.id) {
+      rr.state.activeSetId = set.id;
+      rr.storage.save();
+      rr.ui.syncPanel();
+    }
+  });
+
+  set.marker.on('dragend', function (event) {
+    if (rr.state.activeSetId !== set.id) {
+      rr.state.activeSetId = set.id;
+    }
+    rr.model.setCenter(set, event.target.getLatLng());
+  });
+
+  rr.state.layerGroup.addLayer(set.marker);
+};
 
   rr.render.updateCirclePositions = function (set, center) {
     set.circles.forEach(function (circle) {
@@ -375,6 +455,9 @@ function wrapper(plugin_info) {
   rr.render.drawSet = function (set) {
     const center = rr.model.getSetCenterLatLng(set);
     const dashArray = rr.util.getDashArray(set.lineStyle);
+    const isActive = set.id === rr.state.activeSetId;
+    const circleWeight = isActive ? set.lineWeight + 1 : set.lineWeight;
+    const circleOpacity = isActive ? 1.0 : 0.7;
 
     rr.render.clearSet(set);
     rr.render.createMarker(set, center);
@@ -383,11 +466,15 @@ function wrapper(plugin_info) {
       const circle = L.circle(center, {
         radius: set.spacingMeters * i,
         color: set.color,
-        weight: set.lineWeight,
-        opacity: 0.8,
+        weight: circleWeight,
+        opacity: circleOpacity,
         fill: false,
-        interactive: false,
+        interactive: true,
         dashArray: dashArray
+      });
+
+      circle.on('click', function () {
+        rr.model.setActiveSet(set.id);
       });
 
       rr.state.layerGroup.addLayer(circle);
@@ -447,7 +534,7 @@ function wrapper(plugin_info) {
         color: #fff;
         font-size: 12px;
         line-height: 1.4;
-        min-width: 260px;
+        min-width: 280px;
         border: 1px solid rgba(255,255,255,0.2);
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
         user-select: none;
@@ -495,6 +582,34 @@ function wrapper(plugin_info) {
         font-size: 12px;
       }
 
+      .range-rings-set-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+
+      .range-rings-set-select-wrap label,
+      .range-rings-set-controls-wrap label {
+        flex: 1 1 0;
+        margin-bottom: 0;
+      }
+
+      .range-rings-set-row .range-rings-set-select-wrap,
+      .range-rings-set-row .range-rings-set-controls-wrap {
+        flex: 1 1 0;
+        margin-bottom: 0;
+      }
+
+      .range-rings-set-controls-buttons {
+        display: flex;
+        gap: 8px;
+      }
+
+      .range-rings-set-controls-buttons button {
+        flex: 1 1 0;
+      }
+
       .range-rings-top-row {
         display: flex;
         gap: 8px;
@@ -534,11 +649,36 @@ function wrapper(plugin_info) {
         width: 100%;
       }
 
-      .range-rings-action-button {
+      .range-rings-actions-row {
+        display: flex;
+        gap: 8px;
         margin-top: 4px;
+      }
+
+      .range-rings-actions-row button {
+        flex: 1 1 0;
       }
     `;
     document.head.appendChild(style);
+  };
+
+  rr.ui.populateSetSelect = function () {
+    if (!rr.state.panel) return;
+
+    const select = rr.state.panel.querySelector('.range-rings-set-select');
+    if (!select) return;
+
+    select.innerHTML = '';
+
+    rr.state.ringSets.forEach(function (set, index) {
+      const option = document.createElement('option');
+      option.value = set.id;
+      option.textContent = rr.util.getSetDisplayName(set, index);
+      if (set.id === rr.state.activeSetId) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
   };
 
   rr.ui.syncPanel = function () {
@@ -547,6 +687,8 @@ function wrapper(plugin_info) {
     const activeSet = rr.model.ensureActiveSet();
     const panel = rr.state.panel;
 
+    rr.ui.populateSetSelect();
+
     const spacingInput = panel.querySelector('.range-rings-spacing');
     const countInput = panel.querySelector('.range-rings-count');
     const countValue = panel.querySelector('.range-rings-count-value');
@@ -554,6 +696,7 @@ function wrapper(plugin_info) {
     const weightInput = panel.querySelector('.range-rings-weight');
     const styleInput = panel.querySelector('.range-rings-style');
     const collapseButton = panel.querySelector('.range-rings-collapse');
+    const deleteButton = panel.querySelector('.range-rings-delete-set');
 
     if (spacingInput) spacingInput.value = String(activeSet.spacingMeters);
     if (countInput) countInput.value = String(activeSet.circleCount);
@@ -561,6 +704,7 @@ function wrapper(plugin_info) {
     if (colorInput) colorInput.value = activeSet.color;
     if (weightInput) weightInput.value = String(activeSet.lineWeight);
     if (styleInput) styleInput.value = activeSet.lineStyle;
+    if (deleteButton) deleteButton.disabled = rr.state.ringSets.length <= 1;
 
     if (rr.state.panelBody) {
       rr.state.panelBody.style.display = rr.defaults.panelCollapsed ? 'none' : 'block';
@@ -599,6 +743,22 @@ function wrapper(plugin_info) {
         </div>
       </div>
       <div class="range-rings-body">
+        <div class="range-rings-set-row">
+          <label class="range-rings-set-select-wrap">
+            Ring Set
+            <select class="range-rings-set-select"></select>
+          </label>
+          <div class="range-rings-set-controls-wrap">
+            <label>
+              Set Controls
+              <div class="range-rings-set-controls-buttons">
+                <button type="button" class="range-rings-new-set">New Set</button>
+                <button type="button" class="range-rings-delete-set">Delete</button>
+              </div>
+            </label>
+          </div>
+        </div>
+
         <div class="range-rings-top-row">
           <label>
             Ring Spacing (meters)
@@ -636,7 +796,9 @@ function wrapper(plugin_info) {
           </label>
         </div>
 
-        <button class="range-rings-action-button range-rings-use-center" type="button">Center on Map Center</button>
+        <div class="range-rings-actions-row">
+          <button class="range-rings-use-center" type="button">Center on Map Center</button>
+        </div>
       </div>
     `;
 
@@ -650,6 +812,9 @@ function wrapper(plugin_info) {
 
     const header = panel.querySelector('.range-rings-header');
     const collapseButton = panel.querySelector('.range-rings-collapse');
+    const setSelect = panel.querySelector('.range-rings-set-select');
+    const newSetButton = panel.querySelector('.range-rings-new-set');
+    const deleteSetButton = panel.querySelector('.range-rings-delete-set');
     const spacingInput = panel.querySelector('.range-rings-spacing');
     const countInput = panel.querySelector('.range-rings-count');
     const colorInput = panel.querySelector('.range-rings-color');
@@ -660,6 +825,9 @@ function wrapper(plugin_info) {
     [
       header,
       collapseButton,
+      setSelect,
+      newSetButton,
+      deleteSetButton,
       spacingInput,
       countInput,
       colorInput,
@@ -676,6 +844,18 @@ function wrapper(plugin_info) {
     collapseButton.addEventListener('click', function (event) {
       event.stopPropagation();
       rr.ui.togglePanelCollapsed();
+    });
+
+    setSelect.addEventListener('change', function () {
+      rr.model.setActiveSet(setSelect.value);
+    });
+
+    newSetButton.addEventListener('click', function () {
+      rr.model.addSet();
+    });
+
+    deleteSetButton.addEventListener('click', function () {
+      rr.model.deleteActiveSet();
     });
 
     spacingInput.addEventListener('change', function () {

@@ -1,30 +1,35 @@
-# Range Rings
+# IITC Plugin: Range Rings
 
-An IITC plugin that draws concentric range rings from a draggable center point.
+Range Rings is an IITC plugin that draws concentric range rings from draggable center points.
 
 ## Features
 
-- Draggable center marker
+- Multiple ring sets
+- Draggable center marker for each set
 - Multiple rings at equal spacing
 - Configurable ring spacing
-- Configurable number of rings
+- Configurable number of circles
 - Configurable line color
 - Configurable line width
 - Configurable line style
 - Floating, draggable, collapsible control panel
 - Persistent settings stored in browser localStorage
 
-## Installation
-
-Install `range-rings.user.js` with a userscript manager such as Violentmonkey or Tampermonkey while using IITC on `https://intel.ingress.com/`.
-
 ## Usage
 
 - Enable the `Range Rings` layer in IITC.
-- Drag the center marker to move the ring center.
-- Adjust ring spacing and number of circles in the control panel.
-- Use the control panel to change line color, width, and style.
-- Use `Center on map center` to move the rings to the current map center.
+- Drag a center marker to move that ring set.
+- Click a marker or ring to make that set active.
+- Use the `Ring Set` selector to switch between sets.
+- Use `New Set` to create another ring set.
+- New sets are created near the active set instead of directly on top of it.
+- Use `Delete` to remove the active ring set.
+- Adjust spacing, circle count, and line style settings in the control panel.
+- Use `Center on Map Center` to move the active set to the current map center.
+
+## Installation
+
+Install `range-rings.user.js` with a userscript manager such as Violentmonkey or Tampermonkey while using IITC on `https://intel.ingress.com/`.
 
 ## Notes
 
@@ -32,4 +37,4 @@ Settings are stored in browser localStorage. Removing and reinstalling the plugi
 
 ## Status
 
-Version 1.0.0
+Active development.
