@@ -2,7 +2,7 @@
 // @author         Mike Diehn
 // @name           Range Rings
 // @category       Layer
-// @version        1.0.0
+// @version        1.0.1
 // @description    Draw concentric range circles from a draggable center point.
 // @id             range-rings@mdiehn
 // @namespace      https://github.com/mdiehn/iitc-plugin-range-rings
@@ -23,15 +23,32 @@ function wrapper(plugin_info) {
   const rr = window.plugin.rangeRings;
 
   rr.pluginInfo = plugin_info;
-  rr.storageKey = 'plugin-range-rings-settings';
 
-  rr.settings = {
-    radiusMeters: 5000,
-    circleCount: 5,
-    center: null,
-    color: '#00ffff',
-    lineWeight: 1,
-    lineStyle: 'solid',
+  // --------------------------------------------------------------------------
+  // constants / defaults
+  // --------------------------------------------------------------------------
+
+  rr.constants = {
+    storageKey: 'plugin-range-rings-settings',
+    layerName: 'Range Rings',
+    panelTitle: 'Range Rings',
+    minSpacingMeters: 0,
+    maxSpacingMeters: 1000000,
+    minCircleCount: 1,
+    maxCircleCount: 50,
+    minLineWeight: 1,
+    maxLineWeight: 10
+  };
+
+  rr.defaults = {
+    ringSet: {
+      center: null,
+      spacingMeters: 5000,
+      circleCount: 5,
+      color: '#00ffff',
+      lineWeight: 1,
+      lineStyle: 'solid'
+    },
     panelPosition: {
       left: 20,
       top: 20
@@ -39,15 +56,29 @@ function wrapper(plugin_info) {
     panelCollapsed: false
   };
 
-  rr.layerGroup = null;
-  rr.centerMarker = null;
-  rr.circles = [];
-  rr.panel = null;
-  rr.panelBody = null;
-  rr.isLayerEnabled = true;
-  rr.defaultMarkerIcon = null;
+  // --------------------------------------------------------------------------
+  // state
+  // --------------------------------------------------------------------------
 
-  rr.clampInteger = function (value, minValue, maxValue, fallbackValue) {
+  rr.state = {
+    layerGroup: null,
+    isLayerEnabled: true,
+    defaultMarkerIcon: null,
+
+    panel: null,
+    panelBody: null,
+
+    ringSets: [],
+    activeSetId: null
+  };
+
+  // --------------------------------------------------------------------------
+  // utilities
+  // --------------------------------------------------------------------------
+
+  rr.util = {};
+
+  rr.util.clampInteger = function (value, minValue, maxValue, fallbackValue) {
     const n = parseInt(value, 10);
     if (!Number.isFinite(n)) return fallbackValue;
     if (n < minValue) return minValue;
@@ -55,8 +86,16 @@ function wrapper(plugin_info) {
     return n;
   };
 
-  rr.getDashArray = function () {
-    switch (rr.settings.lineStyle) {
+  rr.util.isValidColor = function (value) {
+    return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+  };
+
+  rr.util.isValidLineStyle = function (value) {
+    return ['solid', 'dashed', 'dotted'].indexOf(value) !== -1;
+  };
+
+  rr.util.getDashArray = function (lineStyle) {
+    switch (lineStyle) {
       case 'dashed':
         return '10,6';
       case 'dotted':
@@ -67,229 +106,337 @@ function wrapper(plugin_info) {
     }
   };
 
-  rr.loadSettings = function () {
-    const raw = localStorage.getItem(rr.storageKey);
-    if (!raw) return;
+  rr.util.makeSetId = function () {
+    return 'set-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
+  };
 
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return;
+  // --------------------------------------------------------------------------
+  // model
+  // --------------------------------------------------------------------------
 
-      if (parsed.center && typeof parsed.center.lat === 'number' && typeof parsed.center.lng === 'number') {
-        rr.settings.center = {
-          lat: parsed.center.lat,
-          lng: parsed.center.lng
+  rr.model = {};
+
+  rr.model.createRingSet = function (overrides) {
+    const set = {
+      id: rr.util.makeSetId(),
+      center: rr.defaults.ringSet.center,
+      spacingMeters: rr.defaults.ringSet.spacingMeters,
+      circleCount: rr.defaults.ringSet.circleCount,
+      color: rr.defaults.ringSet.color,
+      lineWeight: rr.defaults.ringSet.lineWeight,
+      lineStyle: rr.defaults.ringSet.lineStyle,
+
+      marker: null,
+      circles: []
+    };
+
+    if (overrides && typeof overrides === 'object') {
+      if (overrides.id) set.id = overrides.id;
+
+      if (
+        overrides.center &&
+        typeof overrides.center.lat === 'number' &&
+        typeof overrides.center.lng === 'number'
+      ) {
+        set.center = {
+          lat: overrides.center.lat,
+          lng: overrides.center.lng
         };
       }
 
-      if (parsed.panelPosition &&
-          typeof parsed.panelPosition.left === 'number' &&
-          typeof parsed.panelPosition.top === 'number') {
-        rr.settings.panelPosition = {
-          left: parsed.panelPosition.left,
-          top: parsed.panelPosition.top
+      if (rr.util.isValidColor(overrides.color)) {
+        set.color = overrides.color;
+      }
+
+      if (rr.util.isValidLineStyle(overrides.lineStyle)) {
+        set.lineStyle = overrides.lineStyle;
+      }
+
+      set.spacingMeters = rr.util.clampInteger(
+        overrides.spacingMeters,
+        rr.constants.minSpacingMeters,
+        rr.constants.maxSpacingMeters,
+        set.spacingMeters
+      );
+
+      set.circleCount = rr.util.clampInteger(
+        overrides.circleCount,
+        rr.constants.minCircleCount,
+        rr.constants.maxCircleCount,
+        set.circleCount
+      );
+
+      set.lineWeight = rr.util.clampInteger(
+        overrides.lineWeight,
+        rr.constants.minLineWeight,
+        rr.constants.maxLineWeight,
+        set.lineWeight
+      );
+    }
+
+    return set;
+  };
+
+  rr.model.getActiveSet = function () {
+    if (!rr.state.activeSetId) return null;
+
+    for (let i = 0; i < rr.state.ringSets.length; i += 1) {
+      if (rr.state.ringSets[i].id === rr.state.activeSetId) {
+        return rr.state.ringSets[i];
+      }
+    }
+
+    return null;
+  };
+
+  rr.model.ensureActiveSet = function () {
+    let activeSet = rr.model.getActiveSet();
+
+    if (activeSet) {
+      return activeSet;
+    }
+
+    if (rr.state.ringSets.length === 0) {
+      const newSet = rr.model.createRingSet();
+      rr.state.ringSets.push(newSet);
+      rr.state.activeSetId = newSet.id;
+      return newSet;
+    }
+
+    rr.state.activeSetId = rr.state.ringSets[0].id;
+    return rr.state.ringSets[0];
+  };
+
+  rr.model.getSetCenterLatLng = function (set) {
+    if (
+      set.center &&
+      typeof set.center.lat === 'number' &&
+      typeof set.center.lng === 'number'
+    ) {
+      return L.latLng(set.center.lat, set.center.lng);
+    }
+
+    const mapCenter = window.map.getCenter();
+    set.center = {
+      lat: mapCenter.lat,
+      lng: mapCenter.lng
+    };
+    rr.storage.save();
+    return mapCenter;
+  };
+
+  rr.model.setCenter = function (set, latlng) {
+    set.center = {
+      lat: latlng.lat,
+      lng: latlng.lng
+    };
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  // --------------------------------------------------------------------------
+  // storage
+  // --------------------------------------------------------------------------
+
+  rr.storage = {};
+
+  rr.storage.load = function () {
+    const raw = localStorage.getItem(rr.constants.storageKey);
+    if (!raw) {
+      rr.state.ringSets = [rr.model.createRingSet()];
+      rr.state.activeSetId = rr.state.ringSets[0].id;
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('invalid saved data');
+      }
+
+      const panelPosition = parsed.panelPosition;
+      if (
+        panelPosition &&
+        typeof panelPosition.left === 'number' &&
+        typeof panelPosition.top === 'number'
+      ) {
+        rr.defaults.panelPosition = {
+          left: panelPosition.left,
+          top: panelPosition.top
         };
       }
 
       if (typeof parsed.panelCollapsed === 'boolean') {
-        rr.settings.panelCollapsed = parsed.panelCollapsed;
+        rr.defaults.panelCollapsed = parsed.panelCollapsed;
       }
 
-      if (typeof parsed.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.color)) {
-        rr.settings.color = parsed.color;
+      if (Array.isArray(parsed.ringSets) && parsed.ringSets.length > 0) {
+        rr.state.ringSets = parsed.ringSets.map(function (savedSet) {
+          return rr.model.createRingSet(savedSet);
+        });
+
+        rr.state.activeSetId = parsed.activeSetId || rr.state.ringSets[0].id;
+        rr.model.ensureActiveSet();
+        return;
       }
 
-      if (typeof parsed.lineStyle === 'string' &&
-          ['solid', 'dashed', 'dotted'].indexOf(parsed.lineStyle) !== -1) {
-        rr.settings.lineStyle = parsed.lineStyle;
-      }
+      // Backward-compatible load of older single-set format
+      const oldStyleSet = rr.model.createRingSet({
+        center: parsed.center,
+        spacingMeters: parsed.radiusMeters,
+        circleCount: parsed.circleCount,
+        color: parsed.color,
+        lineWeight: parsed.lineWeight,
+        lineStyle: parsed.lineStyle
+      });
 
-      rr.settings.radiusMeters = rr.clampInteger(parsed.radiusMeters, 1, 1000000, rr.settings.radiusMeters);
-      rr.settings.circleCount = rr.clampInteger(parsed.circleCount, 1, 50, rr.settings.circleCount);
-      rr.settings.lineWeight = rr.clampInteger(parsed.lineWeight, 1, 10, rr.settings.lineWeight);
+      rr.state.ringSets = [oldStyleSet];
+      rr.state.activeSetId = oldStyleSet.id;
     } catch (err) {
       console.warn('range-rings: failed to parse settings', err);
+      rr.state.ringSets = [rr.model.createRingSet()];
+      rr.state.activeSetId = rr.state.ringSets[0].id;
     }
   };
 
-  rr.saveSettings = function () {
-    localStorage.setItem(rr.storageKey, JSON.stringify(rr.settings));
-  };
-
-  rr.getCenter = function () {
-    if (rr.settings.center &&
-        typeof rr.settings.center.lat === 'number' &&
-        typeof rr.settings.center.lng === 'number') {
-      return L.latLng(rr.settings.center.lat, rr.settings.center.lng);
-    }
-
-    const mapCenter = window.map.getCenter();
-    rr.settings.center = {
-      lat: mapCenter.lat,
-      lng: mapCenter.lng
+  rr.storage.save = function () {
+    const payload = {
+      ringSets: rr.state.ringSets.map(function (set) {
+        return {
+          id: set.id,
+          center: set.center,
+          spacingMeters: set.spacingMeters,
+          circleCount: set.circleCount,
+          color: set.color,
+          lineWeight: set.lineWeight,
+          lineStyle: set.lineStyle
+        };
+      }),
+      activeSetId: rr.state.activeSetId,
+      panelPosition: rr.ui.getPanelPosition(),
+      panelCollapsed: rr.ui.isPanelCollapsed()
     };
-    rr.saveSettings();
-    return mapCenter;
+
+    localStorage.setItem(rr.constants.storageKey, JSON.stringify(payload));
   };
 
-  rr.setCenter = function (latlng) {
-    rr.settings.center = {
-      lat: latlng.lat,
-      lng: latlng.lng
-    };
-    rr.saveSettings();
-    rr.redraw();
-    rr.syncPanel();
-  };
+  // --------------------------------------------------------------------------
+  // rendering
+  // --------------------------------------------------------------------------
 
-  rr.clearDrawnItems = function () {
-    if (rr.centerMarker) {
-      rr.layerGroup.removeLayer(rr.centerMarker);
-      rr.centerMarker.off();
-      rr.centerMarker = null;
+  rr.render = {};
+
+  rr.render.clearSet = function (set) {
+    if (set.marker) {
+      rr.state.layerGroup.removeLayer(set.marker);
+      set.marker.off();
+      set.marker = null;
     }
 
-    rr.circles.forEach(function (circle) {
-      rr.layerGroup.removeLayer(circle);
+    set.circles.forEach(function (circle) {
+      rr.state.layerGroup.removeLayer(circle);
     });
-    rr.circles = [];
+    set.circles = [];
   };
 
-  rr.createMarker = function (center) {
-    rr.centerMarker = L.marker(center, {
+  rr.render.clearAll = function () {
+    rr.state.ringSets.forEach(function (set) {
+      rr.render.clearSet(set);
+    });
+  };
+
+  rr.render.createMarker = function (set, center) {
+    set.marker = L.marker(center, {
       draggable: true,
       autoPan: true,
       keyboard: false,
       title: 'Range Rings center',
-      icon: rr.defaultMarkerIcon
+      icon: rr.state.defaultMarkerIcon
     });
 
-    rr.centerMarker.on('drag', function (event) {
-      rr.updateCirclePositions(event.target.getLatLng());
+    set.marker.on('drag', function (event) {
+      rr.render.updateCirclePositions(set, event.target.getLatLng());
     });
 
-    rr.centerMarker.on('dragend', function (event) {
-      rr.setCenter(event.target.getLatLng());
+    set.marker.on('dragend', function (event) {
+      rr.model.setCenter(set, event.target.getLatLng());
     });
 
-    rr.layerGroup.addLayer(rr.centerMarker);
+    rr.state.layerGroup.addLayer(set.marker);
   };
 
-  rr.updateCirclePositions = function (center) {
-    rr.circles.forEach(function (circle) {
+  rr.render.updateCirclePositions = function (set, center) {
+    set.circles.forEach(function (circle) {
       circle.setLatLng(center);
     });
   };
 
-  rr.redraw = function () {
-    if (!rr.layerGroup) return;
+  rr.render.drawSet = function (set) {
+    const center = rr.model.getSetCenterLatLng(set);
+    const dashArray = rr.util.getDashArray(set.lineStyle);
 
-    if (!rr.isLayerEnabled) {
-      rr.clearDrawnItems();
-      return;
-    }
+    rr.render.clearSet(set);
+    rr.render.createMarker(set, center);
 
-    const center = rr.getCenter();
-    const dashArray = rr.getDashArray();
-
-    rr.clearDrawnItems();
-    rr.createMarker(center);
-
-    for (let i = 1; i <= rr.settings.circleCount; i += 1) {
+    for (let i = 1; i <= set.circleCount; i += 1) {
       const circle = L.circle(center, {
-        radius: rr.settings.radiusMeters * i,
-        color: rr.settings.color,
-        weight: rr.settings.lineWeight,
+        radius: set.spacingMeters * i,
+        color: set.color,
+        weight: set.lineWeight,
         opacity: 0.8,
         fill: false,
         interactive: false,
         dashArray: dashArray
       });
 
-      rr.layerGroup.addLayer(circle);
-      rr.circles.push(circle);
+      rr.state.layerGroup.addLayer(circle);
+      set.circles.push(circle);
     }
   };
 
-  rr.setRadius = function (value) {
-    rr.settings.radiusMeters = rr.clampInteger(value, 0, 1000000, rr.settings.radiusMeters);
-    rr.saveSettings();
-    rr.redraw();
-    rr.syncPanel();
-  };
+  rr.render.redrawAll = function () {
+    if (!rr.state.layerGroup) return;
 
-  rr.setCircleCount = function (value) {
-    rr.settings.circleCount = rr.clampInteger(value, 1, 50, rr.settings.circleCount);
-    rr.saveSettings();
-    rr.redraw();
-    rr.syncPanel();
-  };
-
-  rr.setColor = function (value) {
-    if (!/^#[0-9a-fA-F]{6}$/.test(value)) return;
-    rr.settings.color = value;
-    rr.saveSettings();
-    rr.redraw();
-    rr.syncPanel();
-  };
-
-  rr.setLineWeight = function (value) {
-    rr.settings.lineWeight = rr.clampInteger(value, 1, 10, rr.settings.lineWeight);
-    rr.saveSettings();
-    rr.redraw();
-    rr.syncPanel();
-  };
-
-  rr.setLineStyle = function (value) {
-    if (['solid', 'dashed', 'dotted'].indexOf(value) === -1) return;
-    rr.settings.lineStyle = value;
-    rr.saveSettings();
-    rr.redraw();
-    rr.syncPanel();
-  };
-
-  rr.useMapCenter = function () {
-    rr.setCenter(window.map.getCenter());
-  };
-
-  rr.syncPanel = function () {
-    if (!rr.panel) return;
-
-    const radiusInput = rr.panel.querySelector('.range-rings-radius');
-    const countInput = rr.panel.querySelector('.range-rings-count');
-    const countValue = rr.panel.querySelector('.range-rings-count-value');
-    const colorInput = rr.panel.querySelector('.range-rings-color');
-    const weightInput = rr.panel.querySelector('.range-rings-weight');
-    const styleInput = rr.panel.querySelector('.range-rings-style');
-    const collapseButton = rr.panel.querySelector('.range-rings-collapse');
-
-    if (radiusInput) radiusInput.value = String(rr.settings.radiusMeters);
-    if (countInput) countInput.value = String(rr.settings.circleCount);
-    if (countValue) countValue.textContent = String(rr.settings.circleCount);
-    if (colorInput) colorInput.value = rr.settings.color;
-    if (weightInput) weightInput.value = String(rr.settings.lineWeight);
-    if (styleInput) styleInput.value = rr.settings.lineStyle;
-
-    if (rr.panelBody) {
-      rr.panelBody.style.display = rr.settings.panelCollapsed ? 'none' : 'block';
+    if (!rr.state.isLayerEnabled) {
+      rr.render.clearAll();
+      return;
     }
 
-    if (collapseButton) {
-      collapseButton.textContent = rr.settings.panelCollapsed ? '+' : '−';
-      collapseButton.title = rr.settings.panelCollapsed ? 'Show panel' : 'Hide panel';
+    rr.state.ringSets.forEach(function (set) {
+      rr.render.drawSet(set);
+    });
+  };
+
+  // --------------------------------------------------------------------------
+  // UI
+  // --------------------------------------------------------------------------
+
+  rr.ui = {};
+
+  rr.ui.getPanelPosition = function () {
+    if (!rr.state.panel) {
+      return {
+        left: rr.defaults.panelPosition.left,
+        top: rr.defaults.panelPosition.top
+      };
     }
 
-    rr.panel.style.left = rr.settings.panelPosition.left + 'px';
-    rr.panel.style.top = rr.settings.panelPosition.top + 'px';
+    return {
+      left: parseInt(rr.state.panel.style.left || rr.defaults.panelPosition.left, 10),
+      top: parseInt(rr.state.panel.style.top || rr.defaults.panelPosition.top, 10)
+    };
   };
 
-  rr.togglePanelCollapsed = function () {
-    rr.settings.panelCollapsed = !rr.settings.panelCollapsed;
-    rr.saveSettings();
-    rr.syncPanel();
+  rr.ui.isPanelCollapsed = function () {
+    if (!rr.state.panelBody) {
+      return rr.defaults.panelCollapsed;
+    }
+
+    return rr.state.panelBody.style.display === 'none';
   };
 
-  rr.injectStyles = function () {
+  rr.ui.injectStyles = function () {
     const style = document.createElement('style');
     style.type = 'text/css';
     style.textContent = `
@@ -300,7 +447,7 @@ function wrapper(plugin_info) {
         color: #fff;
         font-size: 12px;
         line-height: 1.4;
-        min-width: 240px;
+        min-width: 260px;
         border: 1px solid rgba(255,255,255,0.2);
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
         user-select: none;
@@ -348,12 +495,26 @@ function wrapper(plugin_info) {
         font-size: 12px;
       }
 
-      .range-rings-count-label {
-        margin-bottom: 2px;
+      .range-rings-top-row {
+        display: flex;
+        gap: 8px;
+        align-items: end;
+        margin-bottom: 8px;
       }
 
-      .range-rings-action-button {
-        margin-top: 4px;
+      .range-rings-top-row > label,
+      .range-rings-top-row > .range-rings-count-group {
+        flex: 1 1 0;
+        margin-bottom: 0;
+      }
+
+      .range-rings-count-group label {
+        display: block;
+        margin-bottom: 0;
+      }
+
+      .range-rings-count-label {
+        margin-bottom: 2px;
       }
 
       .range-rings-style-row {
@@ -372,29 +533,55 @@ function wrapper(plugin_info) {
       .range-rings-style-row select {
         width: 100%;
       }
-      
-      .range-rings-top-row {
-        display: flex;
-        gap: 8px;
-        align-items: end;
-        margin-bottom: 8px;
-      }
 
-      .range-rings-top-row > label,
-      .range-rings-top-row > .range-rings-count-group {
-        flex: 1 1 0;
-        margin-bottom: 0;
-      }
-
-      .range-rings-count-group label {
-        display: block;
-        margin-bottom: 0;
+      .range-rings-action-button {
+        margin-top: 4px;
       }
     `;
     document.head.appendChild(style);
   };
 
-  rr.installPanel = function () {
+  rr.ui.syncPanel = function () {
+    if (!rr.state.panel) return;
+
+    const activeSet = rr.model.ensureActiveSet();
+    const panel = rr.state.panel;
+
+    const spacingInput = panel.querySelector('.range-rings-spacing');
+    const countInput = panel.querySelector('.range-rings-count');
+    const countValue = panel.querySelector('.range-rings-count-value');
+    const colorInput = panel.querySelector('.range-rings-color');
+    const weightInput = panel.querySelector('.range-rings-weight');
+    const styleInput = panel.querySelector('.range-rings-style');
+    const collapseButton = panel.querySelector('.range-rings-collapse');
+
+    if (spacingInput) spacingInput.value = String(activeSet.spacingMeters);
+    if (countInput) countInput.value = String(activeSet.circleCount);
+    if (countValue) countValue.textContent = String(activeSet.circleCount);
+    if (colorInput) colorInput.value = activeSet.color;
+    if (weightInput) weightInput.value = String(activeSet.lineWeight);
+    if (styleInput) styleInput.value = activeSet.lineStyle;
+
+    if (rr.state.panelBody) {
+      rr.state.panelBody.style.display = rr.defaults.panelCollapsed ? 'none' : 'block';
+    }
+
+    if (collapseButton) {
+      collapseButton.textContent = rr.defaults.panelCollapsed ? '+' : '−';
+      collapseButton.title = rr.defaults.panelCollapsed ? 'Show panel' : 'Hide panel';
+    }
+
+    panel.style.left = rr.defaults.panelPosition.left + 'px';
+    panel.style.top = rr.defaults.panelPosition.top + 'px';
+  };
+
+  rr.ui.togglePanelCollapsed = function () {
+    rr.defaults.panelCollapsed = !rr.defaults.panelCollapsed;
+    rr.storage.save();
+    rr.ui.syncPanel();
+  };
+
+  rr.ui.installPanel = function () {
     const mapContainer = window.map.getContainer();
     if (!mapContainer) return;
 
@@ -406,42 +593,41 @@ function wrapper(plugin_info) {
     panel.className = 'range-rings-panel';
     panel.innerHTML = `
       <div class="range-rings-header">
-        <span>Range Rings</span>
+        <span>${rr.constants.panelTitle}</span>
         <div class="range-rings-header-buttons">
           <button type="button" class="range-rings-collapse" title="Hide panel">−</button>
         </div>
       </div>
       <div class="range-rings-body">
-      
         <div class="range-rings-top-row">
-            <label>
-                Ring Spacing (meters)
-                <input class="range-rings-radius" type="number" min="0" step="500">
-            </label>
+          <label>
+            Ring Spacing (meters)
+            <input class="range-rings-spacing" type="number" min="0" step="500">
+          </label>
 
-            <div class="range-rings-count-group">
-                <div class="range-rings-count-label">
-                No. of Circles: <span class="range-rings-count-value"></span>
-                </div>
-                <label>
-                <input class="range-rings-count" type="range" min="1" max="50" step="1">
-                </label>
+          <div class="range-rings-count-group">
+            <div class="range-rings-count-label">
+              No. of Circles: <span class="range-rings-count-value"></span>
             </div>
+            <label>
+              <input class="range-rings-count" type="range" min="1" max="50" step="1">
+            </label>
+          </div>
         </div>
 
         <div class="range-rings-style-row">
           <label>
-            Line color
+            Line Color
             <input class="range-rings-color" type="color">
           </label>
 
           <label>
-            Line width
+            Line Width
             <input class="range-rings-weight" type="number" min="1" max="10" step="1">
           </label>
 
           <label>
-            Line style
+            Line Style
             <select class="range-rings-style">
               <option value="solid">solid</option>
               <option value="dashed">dashed</option>
@@ -450,7 +636,7 @@ function wrapper(plugin_info) {
           </label>
         </div>
 
-        <button class="range-rings-action-button range-rings-use-center" type="button">Center on map center</button>
+        <button class="range-rings-action-button range-rings-use-center" type="button">Center on Map Center</button>
       </div>
     `;
 
@@ -459,12 +645,12 @@ function wrapper(plugin_info) {
     L.DomEvent.disableClickPropagation(panel);
     L.DomEvent.disableScrollPropagation(panel);
 
-    rr.panel = panel;
-    rr.panelBody = panel.querySelector('.range-rings-body');
+    rr.state.panel = panel;
+    rr.state.panelBody = panel.querySelector('.range-rings-body');
 
     const header = panel.querySelector('.range-rings-header');
     const collapseButton = panel.querySelector('.range-rings-collapse');
-    const radiusInput = panel.querySelector('.range-rings-radius');
+    const spacingInput = panel.querySelector('.range-rings-spacing');
     const countInput = panel.querySelector('.range-rings-count');
     const colorInput = panel.querySelector('.range-rings-color');
     const weightInput = panel.querySelector('.range-rings-weight');
@@ -474,7 +660,7 @@ function wrapper(plugin_info) {
     [
       header,
       collapseButton,
-      radiusInput,
+      spacingInput,
       countInput,
       colorInput,
       weightInput,
@@ -489,50 +675,124 @@ function wrapper(plugin_info) {
 
     collapseButton.addEventListener('click', function (event) {
       event.stopPropagation();
-      rr.togglePanelCollapsed();
+      rr.ui.togglePanelCollapsed();
     });
 
-    radiusInput.addEventListener('change', function () {
-      rr.setRadius(radiusInput.value);
+    spacingInput.addEventListener('change', function () {
+      rr.actions.setSpacing(spacingInput.value);
     });
 
-    radiusInput.addEventListener('keydown', function (event) {
+    spacingInput.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
-        rr.setRadius(radiusInput.value);
+        rr.actions.setSpacing(spacingInput.value);
       }
     });
 
     countInput.addEventListener('input', function () {
-      rr.setCircleCount(countInput.value);
+      rr.actions.setCircleCount(countInput.value);
     });
 
     colorInput.addEventListener('input', function () {
-      rr.setColor(colorInput.value);
+      rr.actions.setColor(colorInput.value);
     });
 
     weightInput.addEventListener('change', function () {
-      rr.setLineWeight(weightInput.value);
+      rr.actions.setLineWeight(weightInput.value);
     });
 
     weightInput.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
-        rr.setLineWeight(weightInput.value);
+        rr.actions.setLineWeight(weightInput.value);
       }
     });
 
     styleInput.addEventListener('change', function () {
-      rr.setLineStyle(styleInput.value);
+      rr.actions.setLineStyle(styleInput.value);
     });
 
     useCenterButton.addEventListener('click', function () {
-      rr.useMapCenter();
+      rr.actions.centerOnMapCenter();
     });
 
-    rr.makePanelDraggable(header, panel);
-    rr.syncPanel();
+    rr.interaction.makePanelDraggable(header, panel);
+    rr.ui.syncPanel();
   };
 
-  rr.makePanelDraggable = function (handle, panel) {
+  // --------------------------------------------------------------------------
+  // actions
+  // --------------------------------------------------------------------------
+
+  rr.actions = {};
+
+  rr.actions.setSpacing = function (value) {
+    const activeSet = rr.model.ensureActiveSet();
+    activeSet.spacingMeters = rr.util.clampInteger(
+      value,
+      rr.constants.minSpacingMeters,
+      rr.constants.maxSpacingMeters,
+      activeSet.spacingMeters
+    );
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.actions.setCircleCount = function (value) {
+    const activeSet = rr.model.ensureActiveSet();
+    activeSet.circleCount = rr.util.clampInteger(
+      value,
+      rr.constants.minCircleCount,
+      rr.constants.maxCircleCount,
+      activeSet.circleCount
+    );
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.actions.setColor = function (value) {
+    const activeSet = rr.model.ensureActiveSet();
+    if (!rr.util.isValidColor(value)) return;
+    activeSet.color = value;
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.actions.setLineWeight = function (value) {
+    const activeSet = rr.model.ensureActiveSet();
+    activeSet.lineWeight = rr.util.clampInteger(
+      value,
+      rr.constants.minLineWeight,
+      rr.constants.maxLineWeight,
+      activeSet.lineWeight
+    );
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.actions.setLineStyle = function (value) {
+    const activeSet = rr.model.ensureActiveSet();
+    if (!rr.util.isValidLineStyle(value)) return;
+    activeSet.lineStyle = value;
+    rr.storage.save();
+    rr.render.redrawAll();
+    rr.ui.syncPanel();
+  };
+
+  rr.actions.centerOnMapCenter = function () {
+    const activeSet = rr.model.ensureActiveSet();
+    rr.model.setCenter(activeSet, window.map.getCenter());
+  };
+
+  // --------------------------------------------------------------------------
+  // interaction
+  // --------------------------------------------------------------------------
+
+  rr.interaction = {};
+
+  rr.interaction.makePanelDraggable = function (handle, panel) {
     let dragging = false;
     let startMouseX = 0;
     let startMouseY = 0;
@@ -545,17 +805,17 @@ function wrapper(plugin_info) {
       const newLeft = startLeft + (event.clientX - startMouseX);
       const newTop = startTop + (event.clientY - startMouseY);
 
-      rr.settings.panelPosition.left = Math.max(0, newLeft);
-      rr.settings.panelPosition.top = Math.max(0, newTop);
+      rr.defaults.panelPosition.left = Math.max(0, newLeft);
+      rr.defaults.panelPosition.top = Math.max(0, newTop);
 
-      panel.style.left = rr.settings.panelPosition.left + 'px';
-      panel.style.top = rr.settings.panelPosition.top + 'px';
+      panel.style.left = rr.defaults.panelPosition.left + 'px';
+      panel.style.top = rr.defaults.panelPosition.top + 'px';
     };
 
     const onMouseUp = function () {
       if (!dragging) return;
       dragging = false;
-      rr.saveSettings();
+      rr.storage.save();
       document.removeEventListener('mousemove', onMouseMove, true);
       document.removeEventListener('mouseup', onMouseUp, true);
     };
@@ -567,8 +827,8 @@ function wrapper(plugin_info) {
       dragging = true;
       startMouseX = event.clientX;
       startMouseY = event.clientY;
-      startLeft = rr.settings.panelPosition.left;
-      startTop = rr.settings.panelPosition.top;
+      startLeft = rr.defaults.panelPosition.left;
+      startTop = rr.defaults.panelPosition.top;
 
       document.addEventListener('mousemove', onMouseMove, true);
       document.addEventListener('mouseup', onMouseUp, true);
@@ -578,44 +838,50 @@ function wrapper(plugin_info) {
     });
   };
 
-  rr.onLayerAdd = function () {
-    rr.isLayerEnabled = true;
-    rr.redraw();
+  rr.interaction.onLayerAdd = function () {
+    rr.state.isLayerEnabled = true;
+    rr.render.redrawAll();
   };
 
-  rr.onLayerRemove = function () {
-    rr.isLayerEnabled = false;
-    rr.clearDrawnItems();
+  rr.interaction.onLayerRemove = function () {
+    rr.state.isLayerEnabled = false;
+    rr.render.clearAll();
   };
 
-  rr.setupLayerTracking = function () {
+  rr.interaction.setupLayerTracking = function () {
     window.map.on('layeradd', function (event) {
-      if (event.layer === rr.layerGroup) {
-        rr.onLayerAdd();
+      if (event.layer === rr.state.layerGroup) {
+        rr.interaction.onLayerAdd();
       }
     });
 
     window.map.on('layerremove', function (event) {
-      if (event.layer === rr.layerGroup) {
-        rr.onLayerRemove();
+      if (event.layer === rr.state.layerGroup) {
+        rr.interaction.onLayerRemove();
       }
     });
   };
 
+  // --------------------------------------------------------------------------
+  // lifecycle
+  // --------------------------------------------------------------------------
+
   rr.setup = function () {
-    rr.loadSettings();
-    rr.injectStyles();
+    rr.storage.load();
+    rr.model.ensureActiveSet();
 
-    rr.defaultMarkerIcon = new L.Icon.Default();
-    rr.layerGroup = new L.LayerGroup();
+    rr.ui.injectStyles();
 
-    rr.setupLayerTracking();
-    window.addLayerGroup('Range Rings', rr.layerGroup, true);
-    rr.installPanel();
+    rr.state.defaultMarkerIcon = new L.Icon.Default();
+    rr.state.layerGroup = new L.LayerGroup();
 
-    rr.isLayerEnabled = window.map.hasLayer(rr.layerGroup);
-    if (rr.isLayerEnabled) {
-      rr.redraw();
+    rr.interaction.setupLayerTracking();
+    window.addLayerGroup(rr.constants.layerName, rr.state.layerGroup, true);
+    rr.ui.installPanel();
+
+    rr.state.isLayerEnabled = window.map.hasLayer(rr.state.layerGroup);
+    if (rr.state.isLayerEnabled) {
+      rr.render.redrawAll();
     }
   };
 
