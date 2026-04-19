@@ -15,75 +15,140 @@
 function wrapper(plugin_info) {
   'use strict';
 
-  if (typeof window.plugin !== 'function') window.plugin = function () {};
-
-  plugin_info.buildName = 'Range Rings';
-  plugin_info.dateTimeVersion = '20260419150000';
-  plugin_info.pluginId = 'iitc-plugin-range-rings@mdiehn';
+  if (typeof window.plugin !== 'function') {
+    window.plugin = function () {};
+  }
 
   window.plugin.rangeRings = {};
   const rr = window.plugin.rangeRings;
 
-  rr.layer = null;
-  rr.centerMarker = null;
-  rr.circles = [];
-  rr.control = null;
+  rr.pluginInfo = plugin_info;
+  rr.storageKey = 'plugin-range-rings-settings';
 
   rr.settings = {
-    enabled: true,
     radiusMeters: 500,
-    count: 5,
+    circleCount: 5,
     center: null
   };
 
-  rr.save = function () {
-    localStorage['plugin-range-rings-settings'] = JSON.stringify(rr.settings);
+  rr.layerGroup = null;
+  rr.centerMarker = null;
+  rr.circles = [];
+  rr.control = null;
+  rr.isLayerEnabled = true;
+
+  rr.defaultMarkerIcon = null;
+
+  rr.clampInteger = function (value, minValue, maxValue, fallbackValue) {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return fallbackValue;
+    if (n < minValue) return minValue;
+    if (n > maxValue) return maxValue;
+    return n;
   };
 
-  rr.load = function () {
-    const raw = localStorage['plugin-range-rings-settings'];
+  rr.loadSettings = function () {
+    const raw = localStorage.getItem(rr.storageKey);
     if (!raw) return;
 
     try {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        rr.settings = Object.assign({}, rr.settings, parsed);
+      if (!parsed || typeof parsed !== 'object') return;
+
+      if (parsed.center && typeof parsed.center.lat === 'number' && typeof parsed.center.lng === 'number') {
+        rr.settings.center = {
+          lat: parsed.center.lat,
+          lng: parsed.center.lng
+        };
       }
-    } catch (e) {
-      console.warn('range-rings: failed to load settings', e);
+
+      rr.settings.radiusMeters = rr.clampInteger(parsed.radiusMeters, 1, 1000000, rr.settings.radiusMeters);
+      rr.settings.circleCount = rr.clampInteger(parsed.circleCount, 1, 50, rr.settings.circleCount);
+    } catch (err) {
+      console.warn('range-rings: failed to parse settings', err);
     }
   };
 
-  rr.ensureCenter = function () {
-    if (
-      rr.settings.center &&
-      typeof rr.settings.center.lat === 'number' &&
-      typeof rr.settings.center.lng === 'number'
-    ) {
+  rr.saveSettings = function () {
+    localStorage.setItem(rr.storageKey, JSON.stringify(rr.settings));
+  };
+
+  rr.getCenter = function () {
+    if (rr.settings.center && typeof rr.settings.center.lat === 'number' && typeof rr.settings.center.lng === 'number') {
       return L.latLng(rr.settings.center.lat, rr.settings.center.lng);
     }
 
-    const c = window.map.getCenter();
-    rr.settings.center = { lat: c.lat, lng: c.lng };
-    rr.save();
-    return c;
+    const mapCenter = window.map.getCenter();
+    rr.settings.center = {
+      lat: mapCenter.lat,
+      lng: mapCenter.lng
+    };
+    rr.saveSettings();
+    return mapCenter;
   };
 
-  rr.clearCircles = function () {
-    rr.circles.forEach(circle => rr.layer.removeLayer(circle));
+  rr.setCenter = function (latlng) {
+    rr.settings.center = {
+      lat: latlng.lat,
+      lng: latlng.lng
+    };
+    rr.saveSettings();
+    rr.redraw();
+    rr.syncControl();
+  };
+
+  rr.clearDrawnItems = function () {
+    if (rr.centerMarker) {
+      rr.layerGroup.removeLayer(rr.centerMarker);
+      rr.centerMarker.off();
+      rr.centerMarker = null;
+    }
+
+    rr.circles.forEach(function (circle) {
+      rr.layerGroup.removeLayer(circle);
+    });
     rr.circles = [];
   };
 
-  rr.draw = function () {
-    if (!rr.layer) return;
+  rr.createMarker = function (center) {
+    rr.centerMarker = L.marker(center, {
+      draggable: true,
+      autoPan: true,
+      keyboard: false,
+      title: 'Range Rings center',
+      icon: rr.defaultMarkerIcon
+    });
 
-    rr.clearCircles();
+    rr.centerMarker.on('drag', function (event) {
+      rr.updateCirclePositions(event.target.getLatLng());
+    });
 
-    if (!rr.settings.enabled) return;
+    rr.centerMarker.on('dragend', function (event) {
+      rr.setCenter(event.target.getLatLng());
+    });
 
-    const center = rr.ensureCenter();
+    rr.layerGroup.addLayer(rr.centerMarker);
+  };
 
-    for (let i = 1; i <= rr.settings.count; i++) {
+  rr.updateCirclePositions = function (center) {
+    rr.circles.forEach(function (circle) {
+      circle.setLatLng(center);
+    });
+  };
+
+  rr.redraw = function () {
+    if (!rr.layerGroup) return;
+    if (!rr.isLayerEnabled) {
+      rr.clearDrawnItems();
+      return;
+    }
+
+    const center = rr.getCenter();
+
+    rr.clearDrawnItems();
+    rr.createMarker(center);
+
+    for (let i = 1; i <= rr.settings.circleCount; i += 1) {
       const circle = L.circle(center, {
         radius: rr.settings.radiusMeters * i,
         color: '#00ffff',
@@ -93,52 +158,89 @@ function wrapper(plugin_info) {
         interactive: false
       });
 
-      circle.addTo(rr.layer);
+      rr.layerGroup.addLayer(circle);
       rr.circles.push(circle);
     }
+  };
 
-    if (rr.centerMarker) {
-      rr.centerMarker.setLatLng(center);
+  rr.syncControl = function () {
+    if (!rr.control || !rr.control._container) return;
+
+    const container = rr.control._container;
+    const radiusInput = container.querySelector('.range-rings-radius');
+    const countInput = container.querySelector('.range-rings-count');
+    const countValue = container.querySelector('.range-rings-count-value');
+
+    if (radiusInput) {
+      radiusInput.value = String(rr.settings.radiusMeters);
+    }
+
+    if (countInput) {
+      countInput.value = String(rr.settings.circleCount);
+    }
+
+    if (countValue) {
+      countValue.textContent = String(rr.settings.circleCount);
     }
   };
 
-  rr.updateCenter = function (latlng) {
-    rr.settings.center = { lat: latlng.lat, lng: latlng.lng };
-    rr.save();
-    rr.draw();
-    rr.syncUI();
+  rr.setRadius = function (value) {
+    rr.settings.radiusMeters = rr.clampInteger(value, 1, 1000000, rr.settings.radiusMeters);
+    rr.saveSettings();
+    rr.redraw();
+    rr.syncControl();
   };
 
-  rr.makeCenterMarker = function () {
-    const center = rr.ensureCenter();
-
-    rr.centerMarker = L.marker(center, {
-      draggable: true,
-      autoPan: true,
-      title: 'Range Rings center'
-    });
-
-    rr.centerMarker.on('drag dragend', function (ev) {
-      rr.updateCenter(ev.target.getLatLng());
-    });
-
-    rr.centerMarker.addTo(rr.layer);
+  rr.setCircleCount = function (value) {
+    rr.settings.circleCount = rr.clampInteger(value, 1, 50, rr.settings.circleCount);
+    rr.saveSettings();
+    rr.redraw();
+    rr.syncControl();
   };
 
-  rr.syncUI = function () {
-    if (!rr.control || !rr.control._container) return;
+  rr.useMapCenter = function () {
+    rr.setCenter(window.map.getCenter());
+  };
 
-    const box = rr.control._container;
+  rr.injectStyles = function () {
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.textContent = `
+      .range-rings-control {
+        background: rgba(8, 48, 78, 0.95);
+        color: #fff;
+        padding: 8px;
+        min-width: 220px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
 
-    const radiusInput = box.querySelector('.range-rings-radius');
-    const countInput = box.querySelector('.range-rings-count');
-    const countValue = box.querySelector('.range-rings-count-value');
-    const enabledInput = box.querySelector('.range-rings-enabled');
+      .range-rings-control .range-rings-title {
+        font-weight: bold;
+        margin-bottom: 6px;
+      }
 
-    if (radiusInput) radiusInput.value = rr.settings.radiusMeters;
-    if (countInput) countInput.value = rr.settings.count;
-    if (countValue) countValue.textContent = rr.settings.count;
-    if (enabledInput) enabledInput.checked = !!rr.settings.enabled;
+      .range-rings-control label {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .range-rings-control input,
+      .range-rings-control button {
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 12px;
+      }
+
+      .range-rings-control button {
+        margin-top: 2px;
+      }
+
+      .range-rings-control .range-rings-count-label {
+        margin-bottom: 2px;
+      }
+    `;
+    document.head.appendChild(style);
   };
 
   rr.installControl = function () {
@@ -148,109 +250,112 @@ function wrapper(plugin_info) {
       },
 
       onAdd: function () {
-        const div = L.DomUtil.create('div', 'leaflet-bar range-rings-control');
-        div.style.background = 'rgba(8, 48, 78, 0.95)';
-        div.style.color = '#fff';
-        div.style.padding = '8px';
-        div.style.minWidth = '220px';
-        div.style.fontSize = '12px';
+        const container = L.DomUtil.create('div', 'leaflet-bar range-rings-control');
 
-        div.innerHTML = `
-          <div style="font-weight:bold; margin-bottom:6px;">Range Rings</div>
+        container.innerHTML = `
+          <div class="range-rings-title">Range Rings</div>
 
-          <label style="display:block; margin-bottom:6px;">
-            <input type="checkbox" class="range-rings-enabled" />
-            enabled
-          </label>
-
-          <label style="display:block; margin-bottom:6px;">
+          <label>
             radius (m)
-            <input type="number" class="range-rings-radius" min="1" step="1" style="width:100%; box-sizing:border-box;" />
+            <input class="range-rings-radius" type="number" min="1" step="1">
           </label>
 
-          <label style="display:block; margin-bottom:6px;">
+          <div class="range-rings-count-label">
             circles: <span class="range-rings-count-value"></span>
-            <input type="range" class="range-rings-count" min="1" max="20" step="1" style="width:100%;" />
+          </div>
+          <label>
+            <input class="range-rings-count" type="range" min="1" max="50" step="1">
           </label>
 
-          <button type="button" class="range-rings-center-map" style="width:100%; margin-bottom:4px;">
-            use map center
-          </button>
+          <button class="range-rings-use-center" type="button">use map center</button>
         `;
 
-        L.DomEvent.disableClickPropagation(div);
-        L.DomEvent.disableScrollPropagation(div);
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
 
-        const enabledInput = div.querySelector('.range-rings-enabled');
-        const radiusInput = div.querySelector('.range-rings-radius');
-        const countInput = div.querySelector('.range-rings-count');
-        const centerBtn = div.querySelector('.range-rings-center-map');
-
-        enabledInput.addEventListener('change', function () {
-          rr.settings.enabled = enabledInput.checked;
-          rr.save();
-          rr.draw();
-        });
+        const radiusInput = container.querySelector('.range-rings-radius');
+        const countInput = container.querySelector('.range-rings-count');
+        const useCenterButton = container.querySelector('.range-rings-use-center');
 
         radiusInput.addEventListener('change', function () {
-          const v = parseInt(radiusInput.value, 10);
-          if (!Number.isFinite(v) || v < 1) return;
-          rr.settings.radiusMeters = v;
-          rr.save();
-          rr.draw();
+          rr.setRadius(radiusInput.value);
+        });
+
+        radiusInput.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter') {
+            rr.setRadius(radiusInput.value);
+          }
         });
 
         countInput.addEventListener('input', function () {
-          const v = parseInt(countInput.value, 10);
-          if (!Number.isFinite(v) || v < 1) return;
-          rr.settings.count = v;
-          rr.save();
-          rr.draw();
+          rr.setCircleCount(countInput.value);
         });
 
-        centerBtn.addEventListener('click', function () {
-          rr.updateCenter(window.map.getCenter());
+        useCenterButton.addEventListener('click', function () {
+          rr.useMapCenter();
         });
 
-        return div;
+        return container;
       }
     });
 
     rr.control = new RangeRingsControl();
     window.map.addControl(rr.control);
-    rr.syncUI();
+    rr.syncControl();
   };
 
-  rr.setupCSS = function () {
-    $('<style>')
-      .prop('type', 'text/css')
-      .html(`
-        .range-rings-control input,
-        .range-rings-control button {
-          font-size: 12px;
-        }
-      `)
-      .appendTo('head');
+  rr.onLayerAdd = function () {
+    rr.isLayerEnabled = true;
+    rr.redraw();
+  };
+
+  rr.onLayerRemove = function () {
+    rr.isLayerEnabled = false;
+    rr.clearDrawnItems();
+  };
+
+  rr.setupLayerTracking = function () {
+    window.map.on('layeradd', function (event) {
+      if (event.layer === rr.layerGroup) {
+        rr.onLayerAdd();
+      }
+    });
+
+    window.map.on('layerremove', function (event) {
+      if (event.layer === rr.layerGroup) {
+        rr.onLayerRemove();
+      }
+    });
   };
 
   rr.setup = function () {
-    rr.load();
-    rr.setupCSS();
+    rr.loadSettings();
+    rr.injectStyles();
 
-    rr.layer = new L.LayerGroup();
-    window.addLayerGroup('Range Rings', rr.layer, true);
+    rr.defaultMarkerIcon = new L.Icon.Default();
+    rr.layerGroup = new L.LayerGroup();
 
-    rr.makeCenterMarker();
-    rr.draw();
+    rr.setupLayerTracking();
+    window.addLayerGroup('Range Rings', rr.layerGroup, true);
     rr.installControl();
+
+    rr.isLayerEnabled = window.map.hasLayer(rr.layerGroup);
+    if (rr.isLayerEnabled) {
+      rr.redraw();
+    }
   };
 
   const setup = rr.setup;
   setup.info = plugin_info;
 
-  if (!window.bootPlugins) window.bootPlugins = [];
+  if (!window.bootPlugins) {
+    window.bootPlugins = [];
+  }
   window.bootPlugins.push(setup);
-  if (window.iitcLoaded && typeof setup === 'function') setup();
+
+  if (window.iitcLoaded && typeof setup === 'function') {
+    setup();
+  }
 }
 
 const script = document.createElement('script');
