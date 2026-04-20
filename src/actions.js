@@ -1,15 +1,11 @@
 rr.actions = {};
 
-rr.actions.setSpacing = function (value) {
+rr.actions.setColor = function (value) {
   const activeSet = rr.model.ensureActiveSet();
-  activeSet.spacingMeters = rr.util.clampInteger(
-    value,
-    rr.constants.minSpacingMeters,
-    rr.constants.maxSpacingMeters,
-    activeSet.spacingMeters
-  );
+  if (!rr.util.isValidColor(value)) return;
+  activeSet.color = value;
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -31,7 +27,7 @@ rr.actions.setColor = function (value) {
   if (!rr.util.isValidColor(value)) return;
   activeSet.color = value;
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -44,7 +40,7 @@ rr.actions.setLineWeight = function (value) {
     activeSet.lineWeight
   );
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -53,7 +49,7 @@ rr.actions.setLineStyle = function (value) {
   if (!rr.util.isValidLineStyle(value)) return;
   activeSet.lineStyle = value;
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 

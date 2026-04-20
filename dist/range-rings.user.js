@@ -218,20 +218,34 @@ rr.model.getSetCenterLatLng = function (set) {
 };
 
 rr.model.setCenter = function (set, latlng) {
+  const center = L.latLng(latlng.lat, latlng.lng);
   set.center = {
-    lat: latlng.lat,
-    lng: latlng.lng
+    lat: center.lat,
+    lng: center.lng
   };
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateCirclePositions(set, center);
   rr.ui.syncPanel();
 };
 
 rr.model.setActiveSet = function (setId) {
-  if (!rr.model.getSetById(setId)) return;
+  const newSet = rr.model.getSetById(setId);
+  if (!newSet) return;
+  if (rr.state.activeSetId === setId) return;
+
+  const oldSet = rr.model.getActiveSet();
+
   rr.state.activeSetId = setId;
+
+  if (oldSet) {
+    rr.render.removeResizeHandles(oldSet);
+    rr.render.updateSetStyle(oldSet);
+  }
+
+  rr.render.updateSetStyle(newSet);
+  rr.render.addResizeHandles(newSet);
+
   rr.storage.save();
-  rr.render.redrawAll();
   rr.ui.syncPanel();
 };
 
@@ -524,12 +538,43 @@ rr.render.createResizeHandle = function (set, center, ringIndex) {
     }
 
     rr.storage.save();
-    rr.render.redrawAll();
     rr.ui.syncPanel();
   });
 
   rr.state.layerGroup.addLayer(handle);
   set.resizeHandles.push(handle);
+};
+
+rr.render.updateSetStyle = function (set) {
+  const dashArray = rr.util.getDashArray(set.lineStyle);
+  const isActive = set.id === rr.state.activeSetId;
+  const circleWeight = isActive ? set.lineWeight + 1 : set.lineWeight;
+  const circleOpacity = isActive ? 1.0 : 0.7;
+
+  set.circles.forEach(function (circle) {
+    circle.setStyle({
+      color: set.color,
+      weight: circleWeight,
+      opacity: circleOpacity,
+      dashArray: dashArray
+    });
+  });
+};
+
+rr.render.removeResizeHandles = function (set) {
+  set.resizeHandles.forEach(function (handle) {
+    rr.state.layerGroup.removeLayer(handle);
+    handle.off();
+  });
+  set.resizeHandles = [];
+};
+
+rr.render.addResizeHandles = function (set) {
+  const center = rr.model.getSetCenterLatLng(set);
+
+  for (let i = 1; i <= set.circleCount; i += 1) {
+    rr.render.createResizeHandle(set, center, i);
+  }
 };
 
 rr.render.drawSet = function (set) {

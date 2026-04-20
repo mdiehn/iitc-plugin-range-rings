@@ -250,3 +250,17 @@ rr.render.redrawAll = function () {
     rr.render.drawSet(set);
   });
 };
+
+rr.render.updateCircleRadii = function (set) {
+  set.circles.forEach(function (circle, circleIndex) {
+    circle.setRadius(set.spacingMeters * (circleIndex + 1));
+  });
+};
+
+rr.render.rebuildResizeHandles = function (set) {
+  rr.render.removeResizeHandles(set);
+
+  if (set.id === rr.state.activeSetId) {
+    rr.render.addResizeHandles(set);
+  }
+};
