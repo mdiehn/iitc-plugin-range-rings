@@ -119,12 +119,13 @@ rr.model.getSetCenterLatLng = function (set) {
 };
 
 rr.model.setCenter = function (set, latlng) {
+  const center = L.latLng(latlng.lat, latlng.lng);
   set.center = {
-    lat: latlng.lat,
-    lng: latlng.lng
+    lat: center.lat,
+    lng: center.lng
   };
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateCirclePositions(set, center));
   rr.ui.syncPanel();
 };
 
