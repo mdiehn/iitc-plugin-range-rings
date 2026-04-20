@@ -1,0 +1,45 @@
+  rr.setup = function () {
+    rr.storage.load();
+    rr.model.ensureActiveSet();
+
+    rr.ui.injectStyles();
+
+    rr.state.defaultMarkerIcon = new L.Icon.Default();
+    rr.state.layerGroup = new L.LayerGroup();
+
+    rr.interaction.setupLayerTracking();
+    window.addLayerGroup(rr.constants.layerName, rr.state.layerGroup, true);
+    rr.ui.installPanel();
+
+    rr.state.isLayerEnabled = window.map.hasLayer(rr.state.layerGroup);
+    if (rr.state.isLayerEnabled) {
+      rr.render.redrawAll();
+    }
+  };
+
+  const setup = rr.setup;
+  setup.info = plugin_info;
+
+  if (!window.bootPlugins) {
+    window.bootPlugins = [];
+  }
+  window.bootPlugins.push(setup);
+
+  if (window.iitcLoaded && typeof setup === 'function') {
+    setup();
+  }
+}
+
+const script = document.createElement('script');
+const info = {};
+if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) {
+  info.script = {
+    version: GM_info.script.version,
+    name: GM_info.script.name,
+    description: GM_info.script.description
+  };
+}
+script.appendChild(
+  document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');')
+);
+(document.body || document.head || document.documentElement).appendChild(script);
