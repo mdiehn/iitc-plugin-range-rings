@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1
+
+- refactor plugin source into modular files with a simple build step
+- reduce full redraws during common editing actions:
+  - moving ring centers
+  - resizing ring spacing
+  - switching active ring sets
+  - changing style and spacing from the panel
+  - changing circle count
+  - adding and deleting ring sets
+- fix center marker position when using "Center on Map Center"
+- fix panel ring-spacing action handling after the refactor
+- fix duplicate `rr.actions.setColor` definition
+
 ## 1.2.0
 
 - Add draggable square resize handles for the active ring set

@@ -2,7 +2,7 @@
 // @author Mike Diehn
 // @name Range Rings
 // @category Layer
-// @version 1.1.0
+// @version 1.2.1
 // @description Draw concentric range circles from draggable center points.
 // @id range-rings@mdiehn
 // @namespace https://github.com/mdiehn/iitc-plugin-range-rings
