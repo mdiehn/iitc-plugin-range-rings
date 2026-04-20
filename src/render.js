@@ -163,7 +163,6 @@ rr.render.createResizeHandle = function (set, center, ringIndex) {
     }
 
     rr.storage.save();
-    rr.render.redrawAll();
     rr.ui.syncPanel();
   });
 
