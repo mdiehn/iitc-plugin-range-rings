@@ -2,7 +2,7 @@
 // @author Mike Diehn
 // @name Range Rings
 // @category Layer
-// @version 1.1.0
+// @version 1.2.1
 // @description Draw concentric range circles from draggable center points.
 // @id range-rings@mdiehn
 // @namespace https://github.com/mdiehn/iitc-plugin-range-rings
@@ -250,29 +250,34 @@ rr.model.setActiveSet = function (setId) {
 };
 
 rr.model.addSet = function () {
-  const baseSet = rr.model.getActiveSet() || rr.model.ensureActiveSet();
-  const baseCenterLatLng = rr.model.getSetCenterLatLng(baseSet);
+  const oldActiveSet = rr.model.getActiveSet() || rr.model.ensureActiveSet();
+  const baseCenterLatLng = rr.model.getSetCenterLatLng(oldActiveSet);
 
-  const offsetMeters = Math.max(500, Math.min(baseSet.spacingMeters, 5000));
+  const offsetMeters = Math.max(500, Math.min(oldActiveSet.spacingMeters, 5000));
   const latOffset = offsetMeters / 111320;
-  const lngOffset = offsetMeters / (111320 * Math.cos(baseCenterLatLng.lat * Math.PI / 180));
+  const lngOffset =
+    offsetMeters / (111320 * Math.cos(baseCenterLatLng.lat * Math.PI / 180));
 
   const newSet = rr.model.createRingSet({
     center: {
       lat: baseCenterLatLng.lat - latOffset,
       lng: baseCenterLatLng.lng + lngOffset
     },
-    spacingMeters: baseSet.spacingMeters,
-    circleCount: baseSet.circleCount,
-    color: baseSet.color,
-    lineWeight: baseSet.lineWeight,
-    lineStyle: baseSet.lineStyle
+    spacingMeters: oldActiveSet.spacingMeters,
+    circleCount: oldActiveSet.circleCount,
+    color: oldActiveSet.color,
+    lineWeight: oldActiveSet.lineWeight,
+    lineStyle: oldActiveSet.lineStyle
   });
 
   rr.state.ringSets.push(newSet);
   rr.state.activeSetId = newSet.id;
+
+  rr.render.removeResizeHandles(oldActiveSet);
+  rr.render.updateSetStyle(oldActiveSet);
+  rr.render.drawSet(newSet);
+
   rr.storage.save();
-  rr.render.redrawAll();
   rr.ui.syncPanel();
 };
 
@@ -288,10 +293,13 @@ rr.model.deleteActiveSet = function () {
   rr.state.ringSets.splice(activeIndex, 1);
 
   const nextIndex = Math.max(0, activeIndex - 1);
-  rr.state.activeSetId = rr.state.ringSets[nextIndex].id;
+  const newActiveSet = rr.state.ringSets[nextIndex];
+  rr.state.activeSetId = newActiveSet.id;
+
+  rr.render.updateSetStyle(newActiveSet);
+  rr.render.rebuildResizeHandles(newActiveSet);
 
   rr.storage.save();
-  rr.render.redrawAll();
   rr.ui.syncPanel();
 };rr.storage = {};
 
@@ -436,6 +444,10 @@ rr.render.createMarker = function (set, center) {
 };
 
 rr.render.updateCirclePositions = function (set, center) {
+  if (set.marker) {
+    set.marker.setLatLng(center);
+  }
+  
   set.circles.forEach(function (circle) {
     circle.setLatLng(center);
   });
@@ -537,6 +549,7 @@ rr.render.createResizeHandle = function (set, center, ringIndex) {
       rr.state.activeSetId = set.id;
     }
 
+    rr.render.applySpacingToSet(set);
     rr.storage.save();
     rr.ui.syncPanel();
   });
@@ -681,6 +694,11 @@ rr.render.syncCircleCount = function (set) {
 
   rr.render.updateCircleRadii(set);
   rr.render.updateSetStyle(set);
+};
+
+rr.render.applySpacingToSet = function (set) {
+  rr.render.updateCircleRadii(set);
+  rr.render.rebuildResizeHandles(set);
 };rr.ui = {};
 
 rr.ui.getPanelPosition = function () {
@@ -1062,6 +1080,10 @@ rr.ui.installPanel = function () {
     rr.model.deleteActiveSet();
   });
 
+  spacingInput.addEventListener('input', function () {
+    rr.actions.setSpacing(spacingInput.value);
+  });
+
   spacingInput.addEventListener('change', function () {
     rr.actions.setSpacing(spacingInput.value);
   });
@@ -1102,14 +1124,18 @@ rr.ui.installPanel = function () {
   rr.ui.syncPanel();
 };rr.actions = {};
 
-rr.actions.setColor = function (value) {
-  const activeSet = rr.model.ensureActiveSet();
-  if (!rr.util.isValidColor(value)) return;
-  activeSet.color = value;
-  rr.storage.save();
-  rr.render.updateSetStyle(activeSet);
-  rr.ui.syncPanel();
-};
+rr.actions.setSpacing = function (value) {
+    const activeSet = rr.model.ensureActiveSet();
+    activeSet.spacingMeters = rr.util.clampInteger(
+      value,
+      rr.constants.minSpacingMeters,
+      rr.constants.maxSpacingMeters,
+      activeSet.spacingMeters
+    );
+    rr.storage.save();
+    rr.render.applySpacingToSet(activeSet);
+    rr.ui.syncPanel();
+  };
 
 rr.actions.setCircleCount = function (value) {
   const activeSet = rr.model.ensureActiveSet();
