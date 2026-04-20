@@ -624,6 +624,63 @@ rr.render.redrawAll = function () {
   rr.state.ringSets.forEach(function (set) {
     rr.render.drawSet(set);
   });
+};
+
+rr.render.updateCircleRadii = function (set) {
+  set.circles.forEach(function (circle, circleIndex) {
+    circle.setRadius(set.spacingMeters * (circleIndex + 1));
+  });
+};
+
+rr.render.rebuildResizeHandles = function (set) {
+  rr.render.removeResizeHandles(set);
+
+  if (set.id === rr.state.activeSetId) {
+    rr.render.addResizeHandles(set);
+  }
+};
+
+rr.render.createCircle = function (set, center, ringIndex) {
+  const isActive = set.id === rr.state.activeSetId;
+  const circle = L.circle(center, {
+    radius: set.spacingMeters * ringIndex,
+    color: set.color,
+    weight: isActive ? set.lineWeight + 1 : set.lineWeight,
+    opacity: isActive ? 1.0 : 0.7,
+    fill: false,
+    interactive: true,
+    dashArray: rr.util.getDashArray(set.lineStyle)
+  });
+
+  circle.on('click', function () {
+    rr.model.setActiveSet(set.id);
+  });
+
+  rr.state.layerGroup.addLayer(circle);
+  set.circles.push(circle);
+};
+
+rr.render.removeLastCircle = function (set) {
+  const circle = set.circles.pop();
+  if (!circle) return;
+
+  rr.state.layerGroup.removeLayer(circle);
+  circle.off();
+};
+
+rr.render.syncCircleCount = function (set) {
+  const center = rr.model.getSetCenterLatLng(set);
+
+  while (set.circles.length < set.circleCount) {
+    rr.render.createCircle(set, center, set.circles.length + 1);
+  }
+
+  while (set.circles.length > set.circleCount) {
+    rr.render.removeLastCircle(set);
+  }
+
+  rr.render.updateCircleRadii(set);
+  rr.render.updateSetStyle(set);
 };rr.ui = {};
 
 rr.ui.getPanelPosition = function () {
@@ -1045,16 +1102,12 @@ rr.ui.installPanel = function () {
   rr.ui.syncPanel();
 };rr.actions = {};
 
-rr.actions.setSpacing = function (value) {
+rr.actions.setColor = function (value) {
   const activeSet = rr.model.ensureActiveSet();
-  activeSet.spacingMeters = rr.util.clampInteger(
-    value,
-    rr.constants.minSpacingMeters,
-    rr.constants.maxSpacingMeters,
-    activeSet.spacingMeters
-  );
+  if (!rr.util.isValidColor(value)) return;
+  activeSet.color = value;
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -1067,7 +1120,8 @@ rr.actions.setCircleCount = function (value) {
     activeSet.circleCount
   );
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.syncCircleCount(activeSet);
+  rr.render.rebuildResizeHandles(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -1076,7 +1130,7 @@ rr.actions.setColor = function (value) {
   if (!rr.util.isValidColor(value)) return;
   activeSet.color = value;
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -1089,7 +1143,7 @@ rr.actions.setLineWeight = function (value) {
     activeSet.lineWeight
   );
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 
@@ -1098,7 +1152,7 @@ rr.actions.setLineStyle = function (value) {
   if (!rr.util.isValidLineStyle(value)) return;
   activeSet.lineStyle = value;
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.updateSetStyle(activeSet);
   rr.ui.syncPanel();
 };
 

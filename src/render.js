@@ -162,6 +162,7 @@ rr.render.createResizeHandle = function (set, center, ringIndex) {
       rr.state.activeSetId = set.id;
     }
 
+    rr.render.applySpacingToSet(set);
     rr.storage.save();
     rr.ui.syncPanel();
   });
@@ -306,4 +307,9 @@ rr.render.syncCircleCount = function (set) {
 
   rr.render.updateCircleRadii(set);
   rr.render.updateSetStyle(set);
+};
+
+rr.render.applySpacingToSet = function (set) {
+  rr.render.updateCircleRadii(set);
+  rr.render.rebuildResizeHandles(set);
 };

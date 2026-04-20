@@ -379,6 +379,10 @@ rr.ui.installPanel = function () {
     rr.model.deleteActiveSet();
   });
 
+  spacingInput.addEventListener('input', function () {
+    rr.actions.setSpacing(spacingInput.value);
+  });
+
   spacingInput.addEventListener('change', function () {
     rr.actions.setSpacing(spacingInput.value);
   });
