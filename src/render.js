@@ -170,6 +170,38 @@ rr.render.createResizeHandle = function (set, center, ringIndex) {
   set.resizeHandles.push(handle);
 };
 
+rr.render.updateSetStyle = function (set) {
+  const dashArray = rr.util.getDashArray(set.lineStyle);
+  const isActive = set.id === rr.state.activeSetId;
+  const circleWeight = isActive ? set.lineWeight + 1 : set.lineWeight;
+  const circleOpacity = isActive ? 1.0 : 0.7;
+
+  set.circles.forEach(function (circle) {
+    circle.setStyle({
+      color: set.color,
+      weight: circleWeight,
+      opacity: circleOpacity,
+      dashArray: dashArray
+    });
+  });
+};
+
+rr.render.removeResizeHandles = function (set) {
+  set.resizeHandles.forEach(function (handle) {
+    rr.state.layerGroup.removeLayer(handle);
+    handle.off();
+  });
+  set.resizeHandles = [];
+};
+
+rr.render.addResizeHandles = function (set) {
+  const center = rr.model.getSetCenterLatLng(set);
+
+  for (let i = 1; i <= set.circleCount; i += 1) {
+    rr.render.createResizeHandle(set, center, i);
+  }
+};
+
 rr.render.drawSet = function (set) {
   const center = rr.model.getSetCenterLatLng(set);
   const dashArray = rr.util.getDashArray(set.lineStyle);

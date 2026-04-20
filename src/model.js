@@ -125,15 +125,28 @@ rr.model.setCenter = function (set, latlng) {
     lng: center.lng
   };
   rr.storage.save();
-  rr.render.updateCirclePositions(set, center));
+  rr.render.updateCirclePositions(set, center);
   rr.ui.syncPanel();
 };
 
 rr.model.setActiveSet = function (setId) {
-  if (!rr.model.getSetById(setId)) return;
+  const newSet = rr.model.getSetById(setId);
+  if (!newSet) return;
+  if (rr.state.activeSetId === setId) return;
+
+  const oldSet = rr.model.getActiveSet();
+
   rr.state.activeSetId = setId;
+
+  if (oldSet) {
+    rr.render.removeResizeHandles(oldSet);
+    rr.render.updateSetStyle(oldSet);
+  }
+
+  rr.render.updateSetStyle(newSet);
+  rr.render.addResizeHandles(newSet);
+
   rr.storage.save();
-  rr.render.redrawAll();
   rr.ui.syncPanel();
 };
 
