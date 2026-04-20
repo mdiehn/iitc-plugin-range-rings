@@ -2,6 +2,12 @@
 
 Range Rings is an IITC plugin that draws concentric range rings from draggable center points.
 
+## Screenshot
+
+Range Rings lets you place and edit multiple concentric ring sets on the IITC map, with draggable centers and live ring spacing controls.
+
+![Range Rings screenshot](docs/screenshot-range-rings.png)
+
 ## Features
 
 - Multiple ring sets
@@ -28,6 +34,18 @@ Range Rings is an IITC plugin that draws concentric range rings from draggable c
 - Adjust spacing, circle count, and line style settings in the control panel.
 - Use `Center on Map Center` to move the active set to the current map center.
 - Drag a resize handle on the active set to change ring spacing.
+
+## Development
+
+Source files live under `src/`.
+
+Build the distributable userscript with:
+
+```bash
+./build.sh
+```
+This writes
+* dist/range-rings.user.js
 
 ## Installation
 

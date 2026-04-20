@@ -1,0 +1,11 @@
+{
+  "name": "iitc-plugin-range-rings",
+  "private": true,
+  "scripts": {
+    "build": "./build.sh",
+    "build:esbuild": "esbuild src/main-entry.js --bundle --format=iife --outfile=dist/range-rings.user.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
