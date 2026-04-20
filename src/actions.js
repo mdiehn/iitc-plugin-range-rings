@@ -18,7 +18,8 @@ rr.actions.setCircleCount = function (value) {
     activeSet.circleCount
   );
   rr.storage.save();
-  rr.render.redrawAll();
+  rr.render.syncCircleCount(activeSet);
+  rr.render.rebuildResizeHandles(activeSet);
   rr.ui.syncPanel();
 };
 

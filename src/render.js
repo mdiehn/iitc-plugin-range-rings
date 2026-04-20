@@ -264,3 +264,46 @@ rr.render.rebuildResizeHandles = function (set) {
     rr.render.addResizeHandles(set);
   }
 };
+
+rr.render.createCircle = function (set, center, ringIndex) {
+  const isActive = set.id === rr.state.activeSetId;
+  const circle = L.circle(center, {
+    radius: set.spacingMeters * ringIndex,
+    color: set.color,
+    weight: isActive ? set.lineWeight + 1 : set.lineWeight,
+    opacity: isActive ? 1.0 : 0.7,
+    fill: false,
+    interactive: true,
+    dashArray: rr.util.getDashArray(set.lineStyle)
+  });
+
+  circle.on('click', function () {
+    rr.model.setActiveSet(set.id);
+  });
+
+  rr.state.layerGroup.addLayer(circle);
+  set.circles.push(circle);
+};
+
+rr.render.removeLastCircle = function (set) {
+  const circle = set.circles.pop();
+  if (!circle) return;
+
+  rr.state.layerGroup.removeLayer(circle);
+  circle.off();
+};
+
+rr.render.syncCircleCount = function (set) {
+  const center = rr.model.getSetCenterLatLng(set);
+
+  while (set.circles.length < set.circleCount) {
+    rr.render.createCircle(set, center, set.circles.length + 1);
+  }
+
+  while (set.circles.length > set.circleCount) {
+    rr.render.removeLastCircle(set);
+  }
+
+  rr.render.updateCircleRadii(set);
+  rr.render.updateSetStyle(set);
+};
