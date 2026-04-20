@@ -14,6 +14,7 @@ Range Rings is an IITC plugin that draws concentric range rings from draggable c
 - Configurable line style
 - Floating, draggable, collapsible control panel
 - Persistent settings stored in browser localStorage
+- Draggable resize handles for the active ring set
 
 ## Usage
 
@@ -26,6 +27,7 @@ Range Rings is an IITC plugin that draws concentric range rings from draggable c
 - Use `Delete` to remove the active ring set.
 - Adjust spacing, circle count, and line style settings in the control panel.
 - Use `Center on Map Center` to move the active set to the current map center.
+- Drag a resize handle on the active set to change ring spacing.
 
 ## Installation
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- Add draggable square resize handles for the active ring set
+- Allow dragging any handle to change ring spacing
+- Update ring sizes live while dragging
+- Save spacing and redraw on drag end
+
 ## 1.1.0
 
 - Add support for multiple ring sets

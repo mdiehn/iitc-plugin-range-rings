@@ -16,7 +16,7 @@ function wrapper(plugin_info) {
   'use strict';
 
   if (typeof window.plugin !== 'function') {
-    window.plugin = function () {};
+    window.plugin = function () { };
   }
 
   window.plugin.rangeRings = {};
@@ -114,6 +114,10 @@ function wrapper(plugin_info) {
     return 'Set ' + (index + 1);
   };
 
+  rr.util.getDistanceMeters = function (latlngA, latlngB) {
+    return latlngA.distanceTo(latlngB);
+  };
+
   // --------------------------------------------------------------------------
   // model
   // --------------------------------------------------------------------------
@@ -131,7 +135,8 @@ function wrapper(plugin_info) {
       lineStyle: rr.defaults.ringSet.lineStyle,
 
       marker: null,
-      circles: []
+      circles: [],
+      resizeHandles: []
     };
 
     if (overrides && typeof overrides === 'object') {
@@ -403,6 +408,12 @@ function wrapper(plugin_info) {
       rr.state.layerGroup.removeLayer(circle);
     });
     set.circles = [];
+
+    set.resizeHandles.forEach(function (handle) {
+      rr.state.layerGroup.removeLayer(handle);
+      handle.off();
+    });
+    set.resizeHandles = [];
   };
 
   rr.render.clearAll = function () {
@@ -412,44 +423,142 @@ function wrapper(plugin_info) {
   };
 
   rr.render.createMarker = function (set, center) {
-  set.marker = L.marker(center, {
-    draggable: true,
-    autoPan: true,
-    keyboard: false,
-    title: 'Range Rings center',
-    icon: rr.state.defaultMarkerIcon
-  });
+    set.marker = L.marker(center, {
+      draggable: true,
+      autoPan: true,
+      keyboard: false,
+      title: 'Range Rings center',
+      icon: rr.state.defaultMarkerIcon
+    });
 
-  set.marker.on('click', function () {
-    rr.model.setActiveSet(set.id);
-  });
+    set.marker.on('click', function () {
+      rr.model.setActiveSet(set.id);
+    });
 
-  set.marker.on('drag', function (event) {
-    rr.render.updateCirclePositions(set, event.target.getLatLng());
-  });
+    set.marker.on('drag', function (event) {
+      rr.render.updateCirclePositions(set, event.target.getLatLng());
+    });
 
-  set.marker.on('dragstart', function () {
-    if (rr.state.activeSetId !== set.id) {
-      rr.state.activeSetId = set.id;
-      rr.storage.save();
-      rr.ui.syncPanel();
-    }
-  });
+    set.marker.on('dragstart', function () {
+      if (rr.state.activeSetId !== set.id) {
+        rr.state.activeSetId = set.id;
+        rr.storage.save();
+        rr.ui.syncPanel();
+      }
+    });
 
-  set.marker.on('dragend', function (event) {
-    if (rr.state.activeSetId !== set.id) {
-      rr.state.activeSetId = set.id;
-    }
-    rr.model.setCenter(set, event.target.getLatLng());
-  });
+    set.marker.on('dragend', function (event) {
+      if (rr.state.activeSetId !== set.id) {
+        rr.state.activeSetId = set.id;
+      }
+      rr.model.setCenter(set, event.target.getLatLng());
+    });
 
-  rr.state.layerGroup.addLayer(set.marker);
-};
+    rr.state.layerGroup.addLayer(set.marker);
+  };
 
   rr.render.updateCirclePositions = function (set, center) {
     set.circles.forEach(function (circle) {
       circle.setLatLng(center);
     });
+
+    set.resizeHandles.forEach(function (handle) {
+      const ringIndex = handle._rangeRingIndex;
+      const handleRadiusMeters = set.spacingMeters * ringIndex;
+      const lngOffset = handleRadiusMeters / (111320 * Math.cos(center.lat * Math.PI / 180));
+      const handleLatLng = L.latLng(center.lat, center.lng + lngOffset);
+
+      handle.setLatLng(handleLatLng);
+    });
+  };
+
+  rr.render.createResizeHandle = function (set, center, ringIndex) {
+    const radiusMeters = set.spacingMeters * ringIndex;
+    const lngOffset = radiusMeters / (111320 * Math.cos(center.lat * Math.PI / 180));
+    const handleLatLng = L.latLng(center.lat, center.lng + lngOffset);
+
+    const handle = L.marker(handleLatLng, {
+      draggable: true,
+      autoPan: true,
+      keyboard: false,
+      opacity: 0.8,
+      title: 'Resize ring spacing',
+      icon: rr.ui.getResizeHandleIcon()
+    });
+
+    handle._rangeRingIndex = ringIndex;
+
+    handle.on('click', function () {
+      rr.model.setActiveSet(set.id);
+    });
+
+    handle.on('dragstart', function () {
+      if (rr.state.activeSetId !== set.id) {
+        rr.state.activeSetId = set.id;
+        rr.storage.save();
+        rr.ui.syncPanel();
+      }
+    });
+
+    handle.on('drag', function (event) {
+      const draggedHandle = event.target;
+      const index = draggedHandle._rangeRingIndex;
+      const draggedLatLng = draggedHandle.getLatLng();
+      const centerLatLng = rr.model.getSetCenterLatLng(set);
+      const distanceMeters = centerLatLng.distanceTo(draggedLatLng);
+      const newSpacing = Math.round(distanceMeters / index);
+
+      set.spacingMeters = rr.util.clampInteger(
+        newSpacing,
+        rr.constants.minSpacingMeters,
+        rr.constants.maxSpacingMeters,
+        set.spacingMeters
+      );
+
+      set.circles.forEach(function (circle, circleIndex) {
+        circle.setRadius(set.spacingMeters * (circleIndex + 1));
+      });
+
+      set.resizeHandles.forEach(function (handleMarker) {
+        if (handleMarker === draggedHandle) return;
+
+        const handleIndex = handleMarker._rangeRingIndex;
+        const handleRadiusMeters = set.spacingMeters * handleIndex;
+        const lngOffset = handleRadiusMeters / (111320 * Math.cos(centerLatLng.lat * Math.PI / 180));
+        const handleLatLng = L.latLng(centerLatLng.lat, centerLatLng.lng + lngOffset);
+
+        handleMarker.setLatLng(handleLatLng);
+      });
+
+      rr.ui.syncPanel();
+    });
+
+    handle.on('dragend', function (event) {
+      const draggedHandle = event.target;
+      const index = draggedHandle._rangeRingIndex;
+      const draggedLatLng = draggedHandle.getLatLng();
+      const centerLatLng = rr.model.getSetCenterLatLng(set);
+      const distanceMeters = centerLatLng.distanceTo(draggedLatLng);
+      const newSpacing = Math.round(distanceMeters / index);
+
+      set.spacingMeters = rr.util.clampInteger(
+        newSpacing,
+        rr.constants.minSpacingMeters,
+        rr.constants.maxSpacingMeters,
+        set.spacingMeters
+      );
+
+      if (rr.state.activeSetId !== set.id) {
+        rr.state.activeSetId = set.id;
+      }
+
+      rr.storage.save();
+      rr.render.redrawAll();
+      rr.ui.syncPanel();
+    });
+
+    rr.state.layerGroup.addLayer(handle);
+    set.resizeHandles.push(handle);
   };
 
   rr.render.drawSet = function (set) {
@@ -479,6 +588,12 @@ function wrapper(plugin_info) {
 
       rr.state.layerGroup.addLayer(circle);
       set.circles.push(circle);
+    }
+
+    if (isActive) {
+      for (let i = 1; i <= set.circleCount; i += 1) {
+        rr.render.createResizeHandle(set, center, i);
+      }
     }
   };
 
@@ -521,6 +636,15 @@ function wrapper(plugin_info) {
     }
 
     return rr.state.panelBody.style.display === 'none';
+  };
+
+  rr.ui.getResizeHandleIcon = function () {
+    return L.divIcon({
+      className: 'range-rings-resize-handle-icon',
+      html: '<div class="range-rings-resize-handle-square"></div>',
+      iconSize: [10, 10],
+      iconAnchor: [5, 5]
+    });
   };
 
   rr.ui.injectStyles = function () {
@@ -658,6 +782,20 @@ function wrapper(plugin_info) {
       .range-rings-actions-row button {
         flex: 1 1 0;
       }
+
+            .range-rings-resize-handle-icon {
+        background: transparent;
+        border: none;
+      }
+
+      .range-rings-resize-handle-square {
+        width: 10px;
+        height: 10px;
+        box-sizing: border-box;
+        background: #ffffff;
+        border: 1px solid #000000;
+      }
+
     `;
     document.head.appendChild(style);
   };
