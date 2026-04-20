@@ -61,6 +61,10 @@ rr.render.createMarker = function (set, center) {
 };
 
 rr.render.updateCirclePositions = function (set, center) {
+  if (set.marker) {
+    set.marker.setLatLng(center);
+  }
+  
   set.circles.forEach(function (circle) {
     circle.setLatLng(center);
   });
