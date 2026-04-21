@@ -52,9 +52,11 @@ This writes
 ## Installation
 
 Requires IITC-CE.
+Works in IITC Mobile
+Shines like a ray of sunshine in both!
 
 - Desktop: install [`range-rings.user.js`](https://github.com/mdiehn/iitc-plugin-range-rings/raw/refs/heads/main/dist/range-rings.user.js)
-- Mobile: download/import the same file in IITC Mobile / AITC Mobile
+- Mobile: download/import the same file in IITC Mobile
 
 ## Notes
 

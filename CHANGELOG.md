@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- add direct install link near the top of the README
+- improve panel collapse, hide/show, and restore-tab behavior
+- hide panel UI when the Range Rings layer is disabled
+- generate both `range-rings.user.js` and `range-rings.meta.js` during builds
+- adopt the standard IITC wrapper so the plugin works in IITC Mobile
+
 ## 1.2.1
 
 - refactor plugin source into modular files with a simple build step
