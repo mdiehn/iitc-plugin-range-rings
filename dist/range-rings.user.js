@@ -5,8 +5,8 @@
 // @category       Layer
 // @version        1.3.0
 // @namespace      https://github.com/mdiehn/iitc-plugin-range-rings
-// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/dist/range-rings.meta.js
-// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/dist/range-rings.user.js
+// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.meta.js
+// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.user.js
 // @description    Draw concentric range circles from draggable center points.
 // @match          *://intel.ingress.com/*
 // @include        https://intel.ingress.com/*
@@ -1412,30 +1412,29 @@ rr.interaction.setupLayerTracking = function () {
       rr.render.redrawAll();
     }
     window.bootPlugins.push(setup);
-
-    const setup = rr.setup;
-    setup.info = plugin_info; // add the script info data to the function as a property
-
-    if (!window.bootPlugins) window.bootPlugins = [];
-    window.bootPlugins.push(setup);
-
-    // if IITC has already booted, immediately run the setup function
-    if (window.iitcLoaded && typeof setup === 'function') setup();
-
-  } // wrapper end
-
-  // inject code into site context
-  var script = document.createElement('script');
-  var info = {};
-
-  if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) {
-    info.script = {
-      version: GM_info.script.version,
-      name: GM_info.script.name,
-      description: GM_info.script.description
-    };
   }
+  const setup = rr.setup;
+  setup.info = plugin_info; // add the script info data to the function as a property
 
-  script.appendChild(document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');'));
-  (document.body || document.head || document.documentElement).appendChild(script);
+  if (!window.bootPlugins) window.bootPlugins = [];
+  window.bootPlugins.push(setup);
+
+  // if IITC has already booted, immediately run the setup function
+  if (window.iitcLoaded && typeof setup === 'function') setup();
+
+} // wrapper end
+
+// inject code into site context
+var script = document.createElement('script');
+var info = {};
+
+if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) {
+  info.script = {
+    version: GM_info.script.version,
+    name: GM_info.script.name,
+    description: GM_info.script.description
+  };
 }
+
+script.appendChild(document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');'));
+(document.body || document.head || document.documentElement).appendChild(script);
