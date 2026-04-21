@@ -22,6 +22,19 @@ rr.ui.isPanelCollapsed = function () {
   return rr.state.panelBody.style.display === 'none';
 };
 
+rr.ui.isPanelVisible = function () {
+  if (!rr.state.panel) {
+    return rr.defaults.panelVisible !== false;
+  }
+  return rr.state.panel.style.display !== 'none';
+};
+
+rr.ui.togglePanelVisible = function () {
+  rr.defaults.panelVisible = !rr.defaults.panelVisible;
+  rr.storage.save();
+  rr.ui.syncPanel();
+};
+
 rr.ui.getResizeHandleIcon = function () {
   return L.divIcon({
     className: 'range-rings-resize-handle-icon',
@@ -42,12 +55,36 @@ rr.ui.injectStyles = function () {
           color: #fff;
           font-size: 12px;
           line-height: 1.4;
-          min-width: 280px;
+          width: 280px;
+          box-sizing: border-box;
           border: 1px solid rgba(255,255,255,0.2);
           box-shadow: 0 2px 8px rgba(0,0,0,0.35);
           user-select: none;
         }
 
+        .range-rings-show-button {
+          position: absolute;
+          z-index: 5000;
+          top: 0;
+          left: 20px;
+          width: 28px;
+          height: 36px;
+          padding: 0;
+          border: 1px solid rgba(255,255,255,0.25);
+          border-top: none;
+          border-radius: 0 0 6px 6px;
+          background: rgba(8, 48, 78, 0.95);
+          color: #fff;
+          font-size: 11px;
+          font-weight: bold;
+          line-height: 1;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        }
+
+        .range-rings-show-button:hover {
+          background: rgba(20, 70, 110, 0.98);
+        }
         .range-rings-header {
           display: flex;
           align-items: center;
@@ -218,6 +255,8 @@ rr.ui.syncPanel = function () {
   const styleInput = panel.querySelector('.range-rings-style');
   const collapseButton = panel.querySelector('.range-rings-collapse');
   const deleteButton = panel.querySelector('.range-rings-delete-set');
+  const hideButton = panel.querySelector('.range-rings-hide');
+  const showButton = rr.state.showButton;
 
   if (spacingInput) spacingInput.value = String(activeSet.spacingMeters);
   if (countInput) countInput.value = String(activeSet.circleCount);
@@ -234,6 +273,22 @@ rr.ui.syncPanel = function () {
   if (collapseButton) {
     collapseButton.textContent = rr.defaults.panelCollapsed ? '+' : '−';
     collapseButton.title = rr.defaults.panelCollapsed ? 'Show panel' : 'Hide panel';
+  }
+
+  if (hideButton) {
+    hideButton.title = 'Hide panel';
+  }
+  const panelVisible = rr.defaults.panelVisible !== false;
+  panel.style.display = panelVisible ? 'block' : 'none';
+  if (showButton) {
+    const mapWidth = panel.parentNode ? panel.parentNode.clientWidth : 0;
+    const desiredLeft = rr.defaults.panelPosition.left;
+    const maxLeft = Math.max(0, mapWidth - 28);
+    const clampedLeft = Math.max(0, Math.min(desiredLeft, maxLeft));
+
+    showButton.style.display = panelVisible ? 'none' : 'block';
+    showButton.style.left = clampedLeft + 'px';
+    showButton.style.top = '0px';
   }
 
   panel.style.left = rr.defaults.panelPosition.left + 'px';
@@ -254,6 +309,9 @@ rr.ui.installPanel = function () {
     mapContainer.style.position = 'relative';
   }
 
+  // Inspired by the restore tab in Zaso's IITC Bookmarks plugin.
+  // The panel can tuck away, but a small visible tab remains so the
+  // user still has an obvious way to bring it back. Thanks, Zaso!
   const panel = document.createElement('div');
   panel.className = 'range-rings-panel';
   panel.innerHTML = `
@@ -261,6 +319,7 @@ rr.ui.installPanel = function () {
           <span>${rr.constants.panelTitle}</span>
           <div class="range-rings-header-buttons">
             <button type="button" class="range-rings-collapse" title="Hide panel">−</button>
+            <button type="button" class="range-rings-hide" title="Hide panel">×</button>
           </div>
         </div>
         <div class="range-rings-body">
@@ -325,14 +384,24 @@ rr.ui.installPanel = function () {
 
   mapContainer.appendChild(panel);
 
+  const showButton = document.createElement('button');
+  showButton.type = 'button';
+  showButton.className = 'range-rings-show-button';
+  showButton.textContent = 'RR';
+  showButton.title = 'Show Range Rings panel';
+  showButton.setAttribute('aria-label', 'Show Range Rings panel');
+  mapContainer.appendChild(showButton);
+
   L.DomEvent.disableClickPropagation(panel);
   L.DomEvent.disableScrollPropagation(panel);
 
   rr.state.panel = panel;
   rr.state.panelBody = panel.querySelector('.range-rings-body');
+  rr.state.showButton = showButton;
 
   const header = panel.querySelector('.range-rings-header');
   const collapseButton = panel.querySelector('.range-rings-collapse');
+  const hideButton = panel.querySelector('.range-rings-hide');
   const setSelect = panel.querySelector('.range-rings-set-select');
   const newSetButton = panel.querySelector('.range-rings-new-set');
   const deleteSetButton = panel.querySelector('.range-rings-delete-set');
@@ -346,6 +415,7 @@ rr.ui.installPanel = function () {
   [
     header,
     collapseButton,
+    hideButton,
     setSelect,
     newSetButton,
     deleteSetButton,
@@ -362,9 +432,27 @@ rr.ui.installPanel = function () {
     });
   });
 
+  L.DomEvent.on(showButton, 'mousedown touchstart pointerdown wheel', function (event) {
+    L.DomEvent.stopPropagation(event);
+  });
+
   collapseButton.addEventListener('click', function (event) {
     event.stopPropagation();
     rr.ui.togglePanelCollapsed();
+  });
+
+  hideButton.addEventListener('click', function (event) {
+    event.stopPropagation();
+    rr.ui.togglePanelVisible();
+  });
+
+  showButton.addEventListener('click', function (event) {
+    event.stopPropagation();
+    if (rr.defaults.panelVisible === false) {
+      rr.defaults.panelVisible = true;
+      rr.storage.save();
+      rr.ui.syncPanel();
+    }
   });
 
   setSelect.addEventListener('change', function () {

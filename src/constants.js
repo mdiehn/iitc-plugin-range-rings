@@ -23,5 +23,6 @@ rr.defaults = {
     left: 20,
     top: 20
   },
-  panelCollapsed: false
+  panelCollapsed: false,
+  panelVisible: true
 };
