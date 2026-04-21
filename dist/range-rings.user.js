@@ -5,8 +5,8 @@
 // @category       Layer
 // @version        1.3.0
 // @namespace      https://github.com/mdiehn/iitc-plugin-range-rings
-// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.meta.js
-// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.user.js
+// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/dist/range-rings.meta.js
+// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/dist/range-rings.user.js
 // @description    Draw concentric range circles from draggable center points.
 // @match          *://intel.ingress.com/*
 // @include        https://intel.ingress.com/*
@@ -21,15 +21,20 @@
  */
 
 function wrapper(plugin_info) {
-  'use strict';
+  // ensure plugin framework is there, even if iitc is not yet loaded
+  if (typeof window.plugin !== 'function') window.plugin = function () {};
 
-  if (typeof window.plugin !== 'function') {
-    window.plugin = function () {};
-  }
+  // PLUGIN AUTHORS: writing a plugin outside of the IITC build environment? if so, delete these lines!!
+  // (leaving them in place might break the 'About IITC' page or break update checks)
+  plugin_info.buildName = 'iitc';
+  plugin_info.dateTimeVersion = '20260421.1';
+  plugin_info.pluginId = 'range-rings';
+  // END PLUGIN AUTHORS NOTE
+
+  'use strict';
 
   window.plugin.rangeRings = {};
   const rr = window.plugin.rangeRings;
-
   rr.pluginInfo = plugin_info;
 
 rr.constants = {
@@ -968,11 +973,25 @@ rr.ui.populateSetSelect = function () {
   });
 };
 
+rr.ui.hideAllPanelUi = function () {
+  if (rr.state.panel) {
+    rr.state.panel.style.display = 'none';
+  }
+  if (rr.state.showButton) {
+    rr.state.showButton.style.display = 'none';
+  }
+};
+
 rr.ui.syncPanel = function () {
   if (!rr.state.panel) return;
 
   const activeSet = rr.model.ensureActiveSet();
   const panel = rr.state.panel;
+
+  if (!rr.state.isLayerEnabled) {
+    rr.ui.hideAllPanelUi();
+    return;
+  }
 
   rr.ui.populateSetSelect();
 
@@ -1355,11 +1374,13 @@ rr.interaction.makePanelDraggable = function (handle, panel) {
 
 rr.interaction.onLayerAdd = function () {
   rr.state.isLayerEnabled = true;
+  rr.ui.syncPanel();
   rr.render.redrawAll();
 };
 
 rr.interaction.onLayerRemove = function () {
   rr.state.isLayerEnabled = false;
+  rr.ui.hideAllPanelUi();
   rr.render.clearAll();
 };
 
@@ -1380,45 +1401,41 @@ rr.interaction.setupLayerTracking = function () {
   rr.setup = function () {
     rr.storage.load();
     rr.model.ensureActiveSet();
-
     rr.ui.injectStyles();
-
     rr.state.defaultMarkerIcon = new L.Icon.Default();
     rr.state.layerGroup = new L.LayerGroup();
-
     rr.interaction.setupLayerTracking();
     window.addLayerGroup(rr.constants.layerName, rr.state.layerGroup, true);
     rr.ui.installPanel();
-
     rr.state.isLayerEnabled = window.map.hasLayer(rr.state.layerGroup);
     if (rr.state.isLayerEnabled) {
       rr.render.redrawAll();
     }
-  };
+    window.bootPlugins.push(setup);
 
-  const setup = rr.setup;
-  setup.info = plugin_info;
+    const setup = rr.setup;
+    setup.info = plugin_info; // add the script info data to the function as a property
 
-  if (!window.bootPlugins) {
-    window.bootPlugins = [];
+    if (!window.bootPlugins) window.bootPlugins = [];
+    window.bootPlugins.push(setup);
+
+    // if IITC has already booted, immediately run the setup function
+    if (window.iitcLoaded && typeof setup === 'function') setup();
+
+  } // wrapper end
+
+  // inject code into site context
+  var script = document.createElement('script');
+  var info = {};
+
+  if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) {
+    info.script = {
+      version: GM_info.script.version,
+      name: GM_info.script.name,
+      description: GM_info.script.description
+    };
   }
-  window.bootPlugins.push(setup);
 
-  if (window.iitcLoaded && typeof setup === 'function') {
-    setup();
-  }
+  script.appendChild(document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');'));
+  (document.body || document.head || document.documentElement).appendChild(script);
 }
-
-const script = document.createElement('script');
-const info = {};
-if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) {
-  info.script = {
-    version: GM_info.script.version,
-    name: GM_info.script.name,
-    description: GM_info.script.description
-  };
-}
-script.appendChild(
-  document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');')
-);
-(document.body || document.head || document.documentElement).appendChild(script);

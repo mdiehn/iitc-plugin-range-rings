@@ -48,11 +48,13 @@ rr.interaction.makePanelDraggable = function (handle, panel) {
 
 rr.interaction.onLayerAdd = function () {
   rr.state.isLayerEnabled = true;
+  rr.ui.syncPanel();
   rr.render.redrawAll();
 };
 
 rr.interaction.onLayerRemove = function () {
   rr.state.isLayerEnabled = false;
+  rr.ui.hideAllPanelUi();
   rr.render.clearAll();
 };
 

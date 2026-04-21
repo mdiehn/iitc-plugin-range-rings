@@ -239,11 +239,25 @@ rr.ui.populateSetSelect = function () {
   });
 };
 
+rr.ui.hideAllPanelUi = function () {
+  if (rr.state.panel) {
+    rr.state.panel.style.display = 'none';
+  }
+  if (rr.state.showButton) {
+    rr.state.showButton.style.display = 'none';
+  }
+};
+
 rr.ui.syncPanel = function () {
   if (!rr.state.panel) return;
 
   const activeSet = rr.model.ensureActiveSet();
   const panel = rr.state.panel;
+
+  if (!rr.state.isLayerEnabled) {
+    rr.ui.hideAllPanelUi();
+    return;
+  }
 
   rr.ui.populateSetSelect();
 
