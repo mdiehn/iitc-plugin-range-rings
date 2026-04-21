@@ -1411,7 +1411,7 @@ rr.interaction.setupLayerTracking = function () {
     if (rr.state.isLayerEnabled) {
       rr.render.redrawAll();
     }
-    window.bootPlugins.push(setup);
+//  window.bootPlugins.push(setup);
   }
   const setup = rr.setup;
   setup.info = plugin_info; // add the script info data to the function as a property
