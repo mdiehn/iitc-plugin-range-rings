@@ -2,6 +2,8 @@
 
 Range Rings is an IITC plugin that draws concentric range rings from draggable center points.
 
+**Install:** [`range-rings.user.js`](https://github.com/mdiehn/iitc-plugin-range-rings/raw/refs/heads/main/dist/range-rings.user.js)
+
 ## Screenshot
 
 Range Rings lets you place and edit multiple concentric ring sets on the IITC map, with draggable centers and live ring spacing controls.
@@ -49,7 +51,12 @@ This writes
 
 ## Installation
 
-Install `range-rings.user.js` with a userscript manager such as Violentmonkey or Tampermonkey while using IITC on `https://intel.ingress.com/`.
+Requires IITC-CE.
+Works in IITC Mobile
+Shines like a ray of sunshine in both!
+
+- Desktop: install [`range-rings.user.js`](https://github.com/mdiehn/iitc-plugin-range-rings/raw/refs/heads/main/dist/range-rings.user.js)
+- Mobile: download/import the same file in IITC Mobile
 
 ## Notes
 

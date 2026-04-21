@@ -29,6 +29,9 @@ rr.storage.load = function () {
     if (typeof parsed.panelCollapsed === 'boolean') {
       rr.defaults.panelCollapsed = parsed.panelCollapsed;
     }
+    if (typeof parsed.panelVisible === 'boolean') {
+      rr.defaults.panelVisible = parsed.panelVisible;
+    }
 
     if (Array.isArray(parsed.ringSets) && parsed.ringSets.length > 0) {
       rr.state.ringSets = parsed.ringSets.map(function (savedSet) {
@@ -73,8 +76,9 @@ rr.storage.save = function () {
       };
     }),
     activeSetId: rr.state.activeSetId,
-    panelPosition: rr.ui.getPanelPosition(),
-    panelCollapsed: rr.ui.isPanelCollapsed()
+    panelPosition: { left: rr.defaults.panelPosition.left, top: rr.defaults.panelPosition.top },
+    panelCollapsed: rr.defaults.panelCollapsed === true,
+    panelVisible: rr.defaults.panelVisible !== false
   };
 
   localStorage.setItem(rr.constants.storageKey, JSON.stringify(payload));
