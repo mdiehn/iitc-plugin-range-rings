@@ -1,16 +1,25 @@
 // ==UserScript==
-// @author Mike Diehn
-// @name Range Rings
-// @category Layer
-// @version 1.2.1
-// @description Draw concentric range circles from draggable center points.
-// @id range-rings@mdiehn
-// @namespace https://github.com/mdiehn/iitc-plugin-range-rings
-// @downloadURL https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/range-rings.user.js
-// @updateURL https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/range-rings.user.js
-// @match https://intel.ingress.com/*
-// @grant none
+// @author         Mike Diehn
+// @id             range-rings
+// @name           IITC plugin: Range Rings
+// @category       Layer
+// @version        1.3.0
+// @namespace      https://github.com/mdiehn/iitc-plugin-range-rings
+// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.meta.js
+// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.user.js
+// @description    Draw concentric range circles from draggable center points.
+// @match          *://intel.ingress.com/*
+// @include        https://intel.ingress.com/*
+// @include        http://intel.ingress.com/*
+// @grant          none
 // ==/UserScript==
+
+/*
+ * IITC Range Rings plugin
+ * Source files are assembled by build.js.
+ * Userscript metadata is generated at build time.
+ */
+
 function wrapper(plugin_info) {
   'use strict';
 
@@ -21,7 +30,9 @@ function wrapper(plugin_info) {
   window.plugin.rangeRings = {};
   const rr = window.plugin.rangeRings;
 
-  rr.pluginInfo = plugin_info;rr.constants = {
+  rr.pluginInfo = plugin_info;
+
+rr.constants = {
   storageKey: 'plugin-range-rings-settings',
   layerName: 'Range Rings',
   panelTitle: 'Range Rings',
@@ -48,7 +59,9 @@ rr.defaults = {
   },
   panelCollapsed: false,
   panelVisible: true
-};rr.state = {
+};
+
+rr.state = {
   layerGroup: null,
   isLayerEnabled: true,
   defaultMarkerIcon: null,
@@ -58,7 +71,9 @@ rr.defaults = {
 
   ringSets: [],
   activeSetId: null
-};rr.util = {};
+};
+
+rr.util = {};
 
 rr.util.clampInteger = function (value, minValue, maxValue, fallbackValue) {
   const n = parseInt(value, 10);
@@ -98,7 +113,9 @@ rr.util.getSetDisplayName = function (set, index) {
 
 rr.util.getDistanceMeters = function (latlngA, latlngB) {
   return latlngA.distanceTo(latlngB);
-};rr.model = {};
+};
+
+rr.model = {};
 
 rr.model.createRingSet = function (overrides) {
   const set = {
@@ -302,7 +319,9 @@ rr.model.deleteActiveSet = function () {
 
   rr.storage.save();
   rr.ui.syncPanel();
-};rr.storage = {};
+};
+
+rr.storage = {};
 
 rr.storage.load = function () {
   const raw = localStorage.getItem(rr.constants.storageKey);
@@ -380,13 +399,15 @@ rr.storage.save = function () {
       };
     }),
     activeSetId: rr.state.activeSetId,
-    panelPosition: rr.ui.getPanelPosition(),
-    panelCollapsed: rr.ui.isPanelCollapsed() === true,
-    panelVisible: rr.ui.isPanelVisible() !== false
+    panelPosition: { left: rr.defaults.panelPosition.left, top: rr.defaults.panelPosition.top },
+    panelCollapsed: rr.defaults.panelCollapsed === true,
+    panelVisible: rr.defaults.panelVisible !== false
   };
 
   localStorage.setItem(rr.constants.storageKey, JSON.stringify(payload));
-};rr.render = {};
+};
+
+rr.render = {};
 
 rr.render.clearSet = function (set) {
   if (set.marker) {
@@ -704,7 +725,9 @@ rr.render.syncCircleCount = function (set) {
 rr.render.applySpacingToSet = function (set) {
   rr.render.updateCircleRadii(set);
   rr.render.rebuildResizeHandles(set);
-};rr.ui = {};
+};
+
+rr.ui = {};
 
 rr.ui.getPanelPosition = function () {
   if (!rr.state.panel) {
@@ -771,19 +794,26 @@ rr.ui.injectStyles = function () {
         .range-rings-show-button {
           position: absolute;
           z-index: 5000;
+          top: 0;
           left: 20px;
-          top: 20px;
-          height: 28px;
-          padding: 0 10px;
+          width: 28px;
+          height: 36px;
+          padding: 0;
           border: 1px solid rgba(255,255,255,0.25);
+          border-top: none;
+          border-radius: 0 0 6px 6px;
           background: rgba(8, 48, 78, 0.95);
           color: #fff;
-          font-size: 12px;
-          line-height: 26px;
+          font-size: 11px;
+          font-weight: bold;
+          line-height: 1;
           cursor: pointer;
           box-shadow: 0 2px 8px rgba(0,0,0,0.35);
         }
 
+        .range-rings-show-button:hover {
+          background: rgba(20, 70, 110, 0.98);
+        }
         .range-rings-header {
           display: flex;
           align-items: center;
@@ -980,9 +1010,14 @@ rr.ui.syncPanel = function () {
   const panelVisible = rr.defaults.panelVisible !== false;
   panel.style.display = panelVisible ? 'block' : 'none';
   if (showButton) {
+    const mapWidth = panel.parentNode ? panel.parentNode.clientWidth : 0;
+    const desiredLeft = rr.defaults.panelPosition.left;
+    const maxLeft = Math.max(0, mapWidth - 28);
+    const clampedLeft = Math.max(0, Math.min(desiredLeft, maxLeft));
+
     showButton.style.display = panelVisible ? 'none' : 'block';
-    showButton.style.left = rr.defaults.panelPosition.left + 'px';
-    showButton.style.top = rr.defaults.panelPosition.top + 'px';
+    showButton.style.left = clampedLeft + 'px';
+    showButton.style.top = '0px';
   }
 
   panel.style.left = rr.defaults.panelPosition.left + 'px';
@@ -1003,6 +1038,9 @@ rr.ui.installPanel = function () {
     mapContainer.style.position = 'relative';
   }
 
+  // Inspired by the restore tab in Zaso's IITC Bookmarks plugin.
+  // The panel can tuck away, but a small visible tab remains so the
+  // user still has an obvious way to bring it back. Thanks, Zaso!
   const panel = document.createElement('div');
   panel.className = 'range-rings-panel';
   panel.innerHTML = `
@@ -1078,8 +1116,9 @@ rr.ui.installPanel = function () {
   const showButton = document.createElement('button');
   showButton.type = 'button';
   showButton.className = 'range-rings-show-button';
-  showButton.textContent = 'Range Rings';
+  showButton.textContent = 'RR';
   showButton.title = 'Show Range Rings panel';
+  showButton.setAttribute('aria-label', 'Show Range Rings panel');
   mapContainer.appendChild(showButton);
 
   L.DomEvent.disableClickPropagation(panel);
@@ -1199,7 +1238,9 @@ rr.ui.installPanel = function () {
 
   rr.interaction.makePanelDraggable(header, panel);
   rr.ui.syncPanel();
-};rr.actions = {};
+};
+
+rr.actions = {};
 
 rr.actions.setSpacing = function (value) {
     const activeSet = rr.model.ensureActiveSet();
@@ -1263,6 +1304,7 @@ rr.actions.centerOnMapCenter = function () {
   const activeSet = rr.model.ensureActiveSet();
   rr.model.setCenter(activeSet, window.map.getCenter());
 };
+
 rr.interaction = {};
 
 rr.interaction.makePanelDraggable = function (handle, panel) {
@@ -1333,7 +1375,9 @@ rr.interaction.setupLayerTracking = function () {
       rr.interaction.onLayerRemove();
     }
   });
-};  rr.setup = function () {
+};
+
+  rr.setup = function () {
     rr.storage.load();
     rr.model.ensureActiveSet();
 
