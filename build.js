@@ -42,18 +42,18 @@ function getRepositoryPath(packageJson) {
 }
 
 const packageJson = readPackageJson();
-const branch = getGitBranch(ROOT);
 const repoPath = getRepositoryPath(packageJson);
-const rawBase = `https://raw.githubusercontent.com/${repoPath}/${branch}/dist`;
+const updateBranch = process.env.UPDATE_BRANCH || 'main';
+const rawBase = `https://raw.githubusercontent.com/${repoPath}/${updateBranch}/dist`;
 
 const plugin = {
   author: 'Mike Diehn',
   id: 'range-rings',
   name: 'IITC plugin: Range Rings',
   category: 'Layer',
-  version: packageJson.version || '1.3.0',
+  version: packageJson.version || '1.3.1',
   namespace: `https://github.com/${repoPath}`,
-  updateURL: `${rawBase}/range-rings.meta.js`,
+  updateURL: `${rawBase}/range-rings.user.js`,
   downloadURL: `${rawBase}/range-rings.user.js`,
   description: 'Draw concentric range circles from draggable center points.',
   matches: [
@@ -136,7 +136,7 @@ function main() {
     'utf8'
   );
 
-  console.log(`Building ${plugin.id} from ${repoPath} on branch ${branch}`);
+  console.log(`Building ${plugin.id} from ${repoPath} on branch ${updateBranch}`);
   console.log('Wrote dist/range-rings.user.js');
   console.log('Wrote dist/range-rings.meta.js');
 }

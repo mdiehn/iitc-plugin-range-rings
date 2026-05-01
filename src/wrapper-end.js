@@ -6,12 +6,14 @@
     rr.state.layerGroup = new L.LayerGroup();
     rr.interaction.setupLayerTracking();
     window.addLayerGroup(rr.constants.layerName, rr.state.layerGroup, true);
-    rr.ui.installPanel();
+
     rr.state.isLayerEnabled = window.map.hasLayer(rr.state.layerGroup);
+    rr.ui.installPanel();
+    rr.ui.syncPanel();
+
     if (rr.state.isLayerEnabled) {
       rr.render.redrawAll();
     }
-    window.bootPlugins.push(setup);
   }
   const setup = rr.setup;
   setup.info = plugin_info; // add the script info data to the function as a property

@@ -3,10 +3,10 @@
 // @id             range-rings
 // @name           IITC plugin: Range Rings
 // @category       Layer
-// @version        1.3.0
+// @version        1.3.1
 // @namespace      https://github.com/mdiehn/iitc-plugin-range-rings
-// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.meta.js
-// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/release/1.3.0/dist/range-rings.user.js
+// @updateURL      https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/dist/range-rings.user.js
+// @downloadURL    https://raw.githubusercontent.com/mdiehn/iitc-plugin-range-rings/main/dist/range-rings.user.js
 // @description    Draw concentric range circles from draggable center points.
 // @match          *://intel.ingress.com/*
 // @include        https://intel.ingress.com/*
@@ -27,7 +27,7 @@ function wrapper(plugin_info) {
   // PLUGIN AUTHORS: writing a plugin outside of the IITC build environment? if so, delete these lines!!
   // (leaving them in place might break the 'About IITC' page or break update checks)
   plugin_info.buildName = 'iitc';
-  plugin_info.dateTimeVersion = '20260421.1';
+  plugin_info.dateTimeVersion = '20260430.1';
   plugin_info.pluginId = 'range-rings';
   // END PLUGIN AUTHORS NOTE
 
@@ -68,7 +68,7 @@ rr.defaults = {
 
 rr.state = {
   layerGroup: null,
-  isLayerEnabled: true,
+  isLayerEnabled: false,
   defaultMarkerIcon: null,
 
   panel: null,
@@ -1406,12 +1406,14 @@ rr.interaction.setupLayerTracking = function () {
     rr.state.layerGroup = new L.LayerGroup();
     rr.interaction.setupLayerTracking();
     window.addLayerGroup(rr.constants.layerName, rr.state.layerGroup, true);
-    rr.ui.installPanel();
+
     rr.state.isLayerEnabled = window.map.hasLayer(rr.state.layerGroup);
+    rr.ui.installPanel();
+    rr.ui.syncPanel();
+
     if (rr.state.isLayerEnabled) {
       rr.render.redrawAll();
     }
-//  window.bootPlugins.push(setup);
   }
   const setup = rr.setup;
   setup.info = plugin_info; // add the script info data to the function as a property
