@@ -1,6 +1,6 @@
 rr.state = {
   layerGroup: null,
-  isLayerEnabled: true,
+  isLayerEnabled: false,
   defaultMarkerIcon: null,
 
   panel: null,

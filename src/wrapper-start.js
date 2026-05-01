@@ -5,7 +5,7 @@ function wrapper(plugin_info) {
   // PLUGIN AUTHORS: writing a plugin outside of the IITC build environment? if so, delete these lines!!
   // (leaving them in place might break the 'About IITC' page or break update checks)
   plugin_info.buildName = 'iitc';
-  plugin_info.dateTimeVersion = '20260421.1';
+  plugin_info.dateTimeVersion = '20260430.1';
   plugin_info.pluginId = 'range-rings';
   // END PLUGIN AUTHORS NOTE
 
